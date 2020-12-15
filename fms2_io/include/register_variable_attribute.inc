@@ -41,9 +41,11 @@ subroutine register_variable_attribute_0d(fileobj, variable_name, attribute_name
     varid = get_variable_id(fileobj%ncid, trim(variable_name))
     select type(attribute_value)
       type is (character(len=*))
-        if (.not. present(str_len)) call error("register_variable_attribute_0d: Need to include str length")
+!         if (.not. present(str_len)) call error("register_variable_attribute_0d: Need to include str length")
+!         err = nf90_put_att(fileobj%ncid, varid, trim(attribute_name), &
+!                            trim(attribute_value(1:str_len)))
         err = nf90_put_att(fileobj%ncid, varid, trim(attribute_name), &
-                           trim(attribute_value(1:str_len)))
+                           attribute_value)
       type is (integer(kind=int32))
         err = nf90_put_att(fileobj%ncid, varid, trim(attribute_name), &
                            attribute_value)
