@@ -5,12 +5,12 @@ implicit none
 private
 
 public :: most_functions_T
-public :: make_most1_functions, make_most2_functions, make_brutsaert_functions
-
-public :: brutsaert_psi_m, brutsaert_psi_h, brutsaert_functions_T
+public :: make_most1_functions, make_most2_functions, make_brutsaert_functions, &
+          make_neutral_functions
 
 ! representation of Monin-Obukhov Similarity Theory (MOST) stability correction functions
 type, abstract :: most_functions_T
+  logical :: neutral = .FALSE. ! only true for neutral stability functions
   real :: rich_crit ! it is here because it is used in Monin-Obukhov solver for all stability options,
                     ! and in some stability functions
 contains
@@ -23,7 +23,7 @@ end type most_functions_T
 abstract interface
   _PURE subroutine most_derivative_function(this,n,mask,zeta,phi,ier)
      import :: most_functions_T
-     class(most_functions_T), intent(in)     :: this
+     class(most_functions_T), intent(in)   :: this
      integer, intent(in   )                :: n
      logical, intent(in   ), dimension(n)  :: mask
      real   , intent(in   ), dimension(n)  :: zeta
@@ -32,7 +32,7 @@ abstract interface
   end subroutine most_derivative_function
   _PURE subroutine most_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
      import :: most_functions_T
-     class(most_functions_T), intent(in)     :: this
+     class(most_functions_T), intent(in)   :: this
      integer, intent(in   )                :: n
      logical, intent(in   ), dimension(n)  :: mask
      real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
@@ -41,7 +41,7 @@ abstract interface
   end subroutine most_integral_m
   _PURE subroutine most_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
      import :: most_functions_T
-     class(most_functions_T), intent(in)     :: this
+     class(most_functions_T), intent(in)   :: this
      integer, intent(in   )                :: n
      real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
      logical, intent(in   ), dimension(n)  :: mask
@@ -49,6 +49,15 @@ abstract interface
      integer, intent(  out)                :: ier
   end subroutine most_integral_tq
 end interface
+
+type, extends(most_functions_T) :: neutral_functions_T
+! stable option 1
+contains
+  procedure :: derivative_m => neutral_deriv_m
+  procedure :: derivative_t => neutral_deriv_t
+  procedure :: integral_m   => neutral_integral_m
+  procedure :: integral_tq  => neutral_integral_tq
+end type neutral_functions_T
 
 type, extends(most_functions_T) :: most1_functions_T
 ! stable option 1
@@ -80,6 +89,67 @@ contains
 end type brutsaert_functions_T
 
 contains ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+! ==== neutral stability option =========================================================
+function make_neutral_functions(rich_crit) result(ptr)
+   class(neutral_functions_T), pointer :: ptr
+   real, intent(in) :: rich_crit
+
+   allocate(ptr)
+   ptr%rich_crit = rich_crit
+   ptr%neutral   = .TRUE.
+end function make_neutral_functions
+
+! neutral stability functions are not really used: instead, a simplified non-iterative
+! special case solution is employed by Monin-Obukhov kernel module
+_PURE subroutine neutral_deriv_m(this,n,mask,zeta,phi,ier)
+  class(neutral_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  logical, intent(in   ), dimension(n)  :: mask
+  real   , intent(in   ), dimension(n)  :: zeta
+  real   , intent(inout), dimension(n)  :: phi
+  integer, intent(  out)                :: ier
+
+  ier = 0
+  phi = 1.0
+end subroutine neutral_deriv_m
+
+_PURE subroutine neutral_deriv_t(this,n,mask,zeta,phi,ier)
+  class(neutral_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  logical, intent(in   ), dimension(n)  :: mask
+  real   , intent(in   ), dimension(n)  :: zeta
+  real   , intent(inout), dimension(n)  :: phi
+  integer, intent(  out)                :: ier
+
+  ier = 0
+  phi = 1.0
+end subroutine neutral_deriv_t
+
+_PURE subroutine neutral_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+  class(neutral_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
+  logical, intent(in   ), dimension(n)  :: mask
+  real   , intent(inout), dimension(n)  :: F_m
+  integer, intent(  out)                :: ier
+
+  ier = 0
+  F_m = ln_z_z0
+end subroutine neutral_integral_m
+
+_PURE subroutine neutral_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
+  class(neutral_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  logical, intent(in   ), dimension(n)  :: mask
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
+  real   , intent(inout), dimension(n)  :: F_t, F_q
+  integer, intent(  out)                :: ier
+
+  ier = 0
+  F_t = ln_z_zt
+  F_q = ln_z_zq
+end subroutine neutral_integral_tq
 
 ! ==== first stability option ===========================================================
 function make_most1_functions(rich_crit) result(ptr)
@@ -218,7 +288,6 @@ _PURE subroutine most1_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
   end where
 
 end subroutine most1_integral_tq
-
 
 ! ==== second stability option ===========================================================
 function make_most2_functions(rich_crit, zeta_trans) result(ptr)

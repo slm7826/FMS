@@ -48,12 +48,10 @@ contains
 
 _PURE subroutine monin_obukhov_diff(most, vonkarm,                &
      & ustar_min,                                     &
-     & neutral, &
      & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
   class(most_functions_T), intent(in) :: most
   real   , intent(in   )                        :: vonkarm
   real   , intent(in   )                        :: ustar_min ! = 1.e-10
-  logical, intent(in   )                        :: neutral
   integer, intent(in   )                        :: ni, nj, nk
   real   , intent(in   ), dimension(ni, nj, nk) :: z
   real   , intent(in   ), dimension(ni, nj)     :: u_star, b_star
@@ -70,7 +68,7 @@ _PURE subroutine monin_obukhov_diff(most, vonkarm,                &
   mask = .true.
   uss = max(u_star, ustar_min)
 
-  if(neutral) then
+  if(most%neutral) then
      do k = 1, size(z,3)
         k_m(:,:,k) = vonkarm *uss*z(:,:,k)
         k_h(:,:,k) = k_m(:,:,k)
@@ -92,7 +90,6 @@ end subroutine monin_obukhov_diff
 
 _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
      & error, zeta_min, max_iter, small,                         &
-     & neutral,                                                  &
      & drag_min_heat, drag_min_moist, drag_min_mom,              &
      & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
      & drag_q, u_star, b_star, rich, zeta, lavail, avail, ier)
@@ -104,7 +101,6 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
   real   , intent(in   )                :: zeta_min ! = 1.e-06
   integer, intent(in   )                :: max_iter ! = 20
   real   , intent(in   )                :: small    ! = 1.e-04
-  logical, intent(in   )                :: neutral
   real   , intent(in   )                :: drag_min_heat, drag_min_moist, drag_min_mom
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: pt, pt0, z, z0, zt, zq, speed
@@ -142,7 +138,7 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
      rich = 0.0
   end where
 
-  if(neutral) then
+  if(most%neutral) then
 
      do i = 1, n
         if(mask(i)) then
@@ -307,13 +303,11 @@ end subroutine monin_obukhov_solve_zeta
 
 _PURE subroutine monin_obukhov_profile_1d(most, &
      vonkarm, &
-     & neutral, &
      & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
      & del_m, del_t, del_q, lavail, avail, ier)
 
   class(most_functions_T), intent(in) :: most
   real   , intent(in   )                :: vonkarm
-  logical, intent(in   )                :: neutral
   integer, intent(in   )                :: n
   real,    intent(in   )                :: zref, zref_t
   real,    intent(in   ), dimension(n)  :: z, z0, zt, zq, u_star, b_star, q_star
@@ -346,7 +340,7 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
      ln_z_zref_t = log(z/zref_t)
   endwhere
 
-  if(neutral) then
+  if(most%neutral) then
 
      where(mask)
         del_m = 1.0 - ln_z_zref  /ln_z_z0

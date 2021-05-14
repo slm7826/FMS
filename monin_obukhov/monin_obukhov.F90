@@ -38,10 +38,10 @@ use mpp_mod,       only: input_nml_file
 use fms_mod,       only: error_mesg, FATAL, file_exist,   &
                          check_nml_error, open_namelist_file,      &
                          mpp_pe, mpp_root_pe, close_file, stdlog, &
-                         write_version_number
+                         write_version_number, lowercase
 use monin_obukhov_functions_mod, only: most_functions_T, &
                          make_most1_functions, make_most2_functions, &
-                         make_brutsaert_functions
+                         make_brutsaert_functions, make_neutral_functions
 use monin_obukhov_kernel, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
                          monin_obukhov_solve_zeta, monin_obukhov_profile_1d, &
                          monin_obukhov_stable_mix
@@ -92,13 +92,12 @@ real    :: rich_crit      = 2.0
 real    :: drag_min_heat  = 1.e-05
 real    :: drag_min_moist = 1.e-05
 real    :: drag_min_mom   = 1.e-05
-logical :: neutral        = .false.
 character(32) :: stable_option  = '1'
 real    :: zeta_trans     = 0.5
 logical :: new_mo_option  = .false.
 
 
-namelist /monin_obukhov_nml/ rich_crit, neutral, drag_min_heat, &
+namelist /monin_obukhov_nml/ rich_crit, drag_min_heat, &
                              drag_min_moist, drag_min_mom,      &
                              stable_option, zeta_trans, new_mo_option !miz
 
@@ -110,7 +109,7 @@ real, parameter    :: small  = 1.e-04
 real               :: b_stab, r_crit, lambda, rich_trans
 real               :: sqrt_drag_min_heat, sqrt_drag_min_moist, sqrt_drag_min_mom
 logical            :: module_is_initialized = .false.
-class(most_functions_T), pointer :: most ! poiter to an object representing
+class(most_functions_T), pointer :: most => NULL() ! pointer to an object representing
                    ! stability correction functions
 
 
@@ -164,7 +163,7 @@ if(drag_min_mom.le.0.0)  call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'drag_min_mom in monin_obukhov_mod must be >= 0.0', FATAL)
 
-select case(trim(stable_option))
+select case(trim(lowercase(stable_option)))
 case('1')
    most => make_most1_functions(rich_crit)
 case('2')
@@ -174,10 +173,12 @@ case('2')
    most => make_most2_functions(rich_crit, zeta_trans)
 case('brutsaert')
    most => make_brutsaert_functions(rich_crit)
+case('neutral')
+   most => make_neutral_functions(rich_crit)
 case default
    call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
-        'stable_option = "'//trim(stable_option)//'" is incorrect, use "1", "2", or "brutsaert"', FATAL)
+        'stable_option = "'//trim(stable_option)//'" is incorrect, use "1", "2", "brutsaert", or "neutral"', FATAL)
 end select
 
 
@@ -206,6 +207,7 @@ end subroutine monin_obukhov_init
 
 subroutine monin_obukhov_end
 
+if (associated(most)) deallocate(most)
 module_is_initialized = .false.
 
 end subroutine monin_obukhov_end
@@ -240,14 +242,12 @@ if(lavail) then
    if (count(avail) .eq. 0) return
    call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
         & error, zeta_min, max_iter, small,                         &
-        & neutral,                                                  &
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
         & drag_q, u_star, b_star, rich, zeta, lavail, avail, ier)
 else
    call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
         & error, zeta_min, max_iter, small,                         &
-        & neutral,                                                  &
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
         & drag_q, u_star, b_star, rich, zeta, lavail, avail_dummy, ier)
@@ -278,14 +278,12 @@ if(present(avail)) then
    if (count(avail) .eq. 0) return
 
    call monin_obukhov_profile_1d(most, vonkarm, &
-        & neutral, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .true., avail, ier)
 
 else
 
    call monin_obukhov_profile_1d(most, vonkarm, &
-        & neutral, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .false., dummy_avail, ier)
 
@@ -332,7 +330,6 @@ if(.not.module_is_initialized) call error_mesg('mo_diff_2d_n in monin_obukhov_mo
 ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
 call monin_obukhov_diff(most, vonkarm,                           &
           & ustar_min,                                     &
-          & neutral, &
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
 end subroutine mo_diff_2d_n
@@ -598,7 +595,6 @@ ni = 1; nj = 1; nk = 1
 z_(1,1,1) = z; u_star_ = u_star; b_star_ = b_star
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & neutral,                                       &
           & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
 k_m = k_m_(1,1,1); k_h = k_h_(1,1,1)
 
@@ -624,7 +620,6 @@ ni = 1; nj = 1; nk = size(z(:))
 z_(1,1,:) = z; u_star_ = u_star; b_star_ = b_star
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & neutral,                                       &
           & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
 k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
 
