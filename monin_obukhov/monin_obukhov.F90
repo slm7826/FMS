@@ -24,11 +24,11 @@ module monin_obukhov_mod
 !
 !                         MONIN-OBUKHOV MODULE
 !
-!          Routines for computing surface drag coefficients 
-!                 from data at the lowest model level 
-!              and for computing the profile of fields 
+!          Routines for computing surface drag coefficients
+!                 from data at the lowest model level
+!              and for computing the profile of fields
 !           between the lowest model level and the ground
-!                  using Monin-Obukhov scaling 
+!                  using Monin-Obukhov scaling
 !
 !=======================================================================
 
@@ -39,6 +39,12 @@ use fms_mod,       only: error_mesg, FATAL, file_exist,   &
                          check_nml_error, open_namelist_file,      &
                          mpp_pe, mpp_root_pe, close_file, stdlog, &
                          write_version_number
+use monin_obukhov_functions_mod, only: most_functions_T, &
+                         make_most1_functions, make_most2_functions, &
+                         make_brutsaert_functions
+use monin_obukhov_kernel, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
+                         monin_obukhov_solve_zeta, monin_obukhov_profile_1d, &
+                         monin_obukhov_stable_mix
 
 implicit none
 private
@@ -75,20 +81,19 @@ end interface
 
 
 !--------------------- version number ---------------------------------
-
-character(len=128) :: version = '$Id$'
-character(len=128) :: tagname = '$Name$'
+! Include variable "version" to be written to log file.
+#include <file_version.h>
 
 !=======================================================================
 
 !  DEFAULT VALUES OF NAMELIST PARAMETERS:
 
 real    :: rich_crit      = 2.0
-real    :: drag_min_heat  = 1.e-05          
-real    :: drag_min_moist = 1.e-05          
-real    :: drag_min_mom   = 1.e-05          
+real    :: drag_min_heat  = 1.e-05
+real    :: drag_min_moist = 1.e-05
+real    :: drag_min_mom   = 1.e-05
 logical :: neutral        = .false.
-integer :: stable_option  = 1
+character(32) :: stable_option  = '1'
 real    :: zeta_trans     = 0.5
 logical :: new_mo_option  = .false.
 
@@ -103,8 +108,10 @@ namelist /monin_obukhov_nml/ rich_crit, neutral, drag_min_heat, &
 
 real, parameter    :: small  = 1.e-04
 real               :: b_stab, r_crit, lambda, rich_trans
-real               :: sqrt_drag_min_heat, sqrt_drag_min_moist, sqrt_drag_min_mom 
+real               :: sqrt_drag_min_heat, sqrt_drag_min_moist, sqrt_drag_min_mom
 logical            :: module_is_initialized = .false.
+class(most_functions_T), pointer :: most ! poiter to an object representing
+                   ! stability correction functions
 
 
 contains
@@ -134,11 +141,11 @@ integer :: unit, ierr, io, logunit
 !---------- output namelist to log-------------------------------------
 
       if ( mpp_pe() == mpp_root_pe() ) then
-           call write_version_number(version, tagname)
+           call write_version_number('monin_obukhov_nml', version)
            logunit = stdlog()
            write (logunit, nml=monin_obukhov_nml)
       endif
-      
+
 !----------------------------------------------------------------------
 
 if(rich_crit.le.0.25)  call error_mesg( &
@@ -157,16 +164,25 @@ if(drag_min_mom.le.0.0)  call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'drag_min_mom in monin_obukhov_mod must be >= 0.0', FATAL)
 
-if(stable_option < 1 .or. stable_option > 2) call error_mesg( &
-        'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
-        'the only allowable values of stable_option are 1 and 2', FATAL)
-
-if(stable_option == 2 .and. zeta_trans < 0) call error_mesg( &
+select case(trim(stable_option))
+case('1')
+   most => make_most1_functions(rich_crit)
+case('2')
+   if(zeta_trans < 0) call error_mesg( &
         'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
         'zeta_trans must be positive', FATAL)
+   most => make_most2_functions(rich_crit, zeta_trans)
+case('brutsaert')
+   most => make_brutsaert_functions(rich_crit)
+case default
+   call error_mesg( &
+        'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
+        'stable_option = "'//trim(stable_option)//'" is incorrect, use "1", "2", or "brutsaert"', FATAL)
+end select
+
 
 b_stab = 1.0/rich_crit
-r_crit = 0.95*rich_crit  ! convergence can get slow if one is 
+r_crit = 0.95*rich_crit  ! convergence can get slow if one is
                          ! close to rich_crit
 
 sqrt_drag_min_heat = 0.0
@@ -210,7 +226,7 @@ integer            :: n, ier
 integer, parameter :: max_iter = 20
 real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
-! #include "monin_obukhov_interfaces.h"
+real   , dimension(size(pt)) :: rich, zeta
 
 if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
@@ -220,21 +236,21 @@ lavail = .false.
 if(present(avail)) lavail = .true.
 
 
-if(lavail) then 
+if(lavail) then
    if (count(avail) .eq. 0) return
-   call monin_obukhov_drag_1d(grav, vonkarm,               &
+   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
         & error, zeta_min, max_iter, small,                         &
-        & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
+        & neutral,                                                  &
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, lavail, avail, ier)
+        & drag_q, u_star, b_star, rich, zeta, lavail, avail, ier)
 else
-   call monin_obukhov_drag_1d(grav, vonkarm,               &
+   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
         & error, zeta_min, max_iter, small,                         &
-        & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
+        & neutral,                                                  &
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, lavail, avail_dummy, ier)
+        & drag_q, u_star, b_star, rich, zeta, lavail, avail_dummy, ier)
 endif
 
 end subroutine mo_drag_1d
@@ -253,8 +269,6 @@ logical, intent(in) , optional, dimension(:) :: avail
 logical                            :: dummy_avail(1)
 integer                            :: n, ier
 
-! #include "monin_obukhov_interfaces.h"
-
 if(.not.module_is_initialized) call error_mesg('mo_profile_1d in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
@@ -263,15 +277,15 @@ if(present(avail)) then
 
    if (count(avail) .eq. 0) return
 
-   call monin_obukhov_profile_1d(vonkarm, &
-        & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
+   call monin_obukhov_profile_1d(most, vonkarm, &
+        & neutral, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .true., avail, ier)
 
 else
 
-   call monin_obukhov_profile_1d(vonkarm, &
-        & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
+   call monin_obukhov_profile_1d(most, vonkarm, &
+        & neutral, &
         & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
         & del_m, del_t, del_q, .false., dummy_avail, ier)
 
@@ -291,9 +305,12 @@ integer :: n, ier
 if(.not.module_is_initialized) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
-n = size(rich,1)*size(rich,2)*size(rich,3)
-call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
-     & n, rich, mix, ier)
+call error_mesg('stable_mix_3d in monin_obukhov_mod', &
+     'stable_mix_3d not implemented', FATAL)
+
+! n = size(rich,1)*size(rich,2)*size(rich,3)
+! call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
+!      & n, rich, mix, ier)
 
 
 end subroutine stable_mix_3d
@@ -313,344 +330,12 @@ if(.not.module_is_initialized) call error_mesg('mo_diff_2d_n in monin_obukhov_mo
      'monin_obukhov_init has not been called', FATAL)
 
 ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
-call monin_obukhov_diff(vonkarm,                           &
+call monin_obukhov_diff(most, vonkarm,                           &
           & ustar_min,                                     &
-          & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &
+          & neutral, &
           & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
 
 end subroutine mo_diff_2d_n
-
-!=======================================================================
-! The following routines are used by the public interfaces above
-!=======================================================================
-
-subroutine solve_zeta(rich, z, z0, zt, zq, f_m, f_t, f_q, mask)
-
-real   , intent(in) , dimension(:) :: rich, z, z0, zt, zq
-logical, intent(in) , dimension(:) :: mask
-real   , intent(out), dimension(:) :: f_m, f_t, f_q
-
-
-real, parameter    :: error    = 1.e-04
-real, parameter    :: zeta_min = 1.e-06
-integer, parameter :: max_iter = 20
-
-real    :: max_cor
-integer :: iter
-
-real, dimension(size(rich(:))) ::   &
-          d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
-          ln_z_z0, ln_z_zt, ln_z_zq, zeta,                    &
-          phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
-          zeta_0, zeta_t, zeta_q, df_m, df_t
-          
-logical, dimension(size(rich(:))) :: mask_1
-
-
-z_z0 = z/z0
-z_zt = z/zt
-z_zq = z/zq
-ln_z_z0 = log(z_z0)
-ln_z_zt = log(z_zt)
-ln_z_zq = log(z_zq)
-
-corr = 0.0
-mask_1 = mask
-
-! initial guess
-
-where(mask_1) 
-  zeta = rich*ln_z_z0*ln_z_z0/ln_z_zt
-elsewhere
-  zeta = 0.0
-end where
-
-where (mask_1 .and. rich >= 0.0)
-  zeta = zeta/(1.0 - rich/rich_crit)
-end where 
-
-iter_loop: do iter = 1, max_iter
-
-  where (mask_1 .and. abs(zeta).lt.zeta_min) 
-    zeta = 0.0
-    f_m = ln_z_z0
-    f_t = ln_z_zt
-    f_q = ln_z_zq
-    mask_1 = .false.  ! don't do any more calculations at these pts
-  end where
-  
-  where (mask_1)
-    rzeta  = 1.0/zeta
-    zeta_0 = zeta/z_z0
-    zeta_t = zeta/z_zt
-    zeta_q = zeta/z_zq
-  elsewhere
-    zeta_0 = 0.0
-    zeta_t = 0.0
-    zeta_q = 0.0
-  end where
-
-  call mo_derivative_m(phi_m  , zeta  , mask_1)
-  call mo_derivative_m(phi_m_0, zeta_0, mask_1)
-  call mo_derivative_t(phi_t  , zeta  , mask_1)
-  call mo_derivative_t(phi_t_0, zeta_t, mask_1)
-                   
-  call mo_integral_m(f_m, zeta, zeta_0, ln_z_z0, mask_1)
-  call mo_integral_tq(f_t, f_q, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, mask_1)
-
-  where (mask_1)
-    df_m  = (phi_m - phi_m_0)*rzeta
-    df_t  = (phi_t - phi_t_0)*rzeta
-    rich_1 = zeta*f_t/(f_m*f_m)
-    d_rich = rich_1*( rzeta +  df_t/f_t - 2.0 *df_m/f_m) 
-    correction = (rich - rich_1)/d_rich  
-    corr = min(abs(correction),abs(correction/zeta)) 
-      ! the criterion corr < error seems to work ok, but is a bit arbitrary
-      !  when zeta is small the tolerance is reduced
-  end where
-  
-  max_cor= maxval(corr)
-
-  if(max_cor > error) then
-    mask_1 = mask_1 .and. (corr > error)  
-       ! change the mask so computation proceeds only on non-converged points
-    where(mask_1) 
-      zeta = zeta + correction
-    end where
-    cycle iter_loop
-  else
-    return
-  end if
-
-end do iter_loop
-
-call error_mesg ('solve_zeta in monin_obukhov_mod',  &
-                 'surface drag iteration did not converge', FATAL)
-
-end subroutine solve_zeta
-
-!=======================================================================
-
-subroutine mo_derivative_m(phi_m, zeta, mask)
-
-! the differential similarity function for momentum
-
-real    , intent(out),  dimension(:) :: phi_m
-real    , intent(in),   dimension(:) :: zeta
-logical , intent(in),   dimension(:) :: mask
-
-logical, dimension(size(zeta(:))) :: stable, unstable
-real   , dimension(size(zeta(:))) :: x
-
-stable   = mask .and. zeta >= 0.0
-unstable = mask .and. zeta <  0.0
-
-where (unstable) 
-  x     = (1 - 16.0*zeta  )**(-0.5)
-  phi_m = sqrt(x)  ! phi_m = (1 - 16.0*zeta)**(-0.25)
-end where
-
-if(stable_option == 1) then 
-
-  where (stable) 
-    phi_m = 1.0 + zeta  *(5.0 + b_stab*zeta)/(1.0 + zeta)
-  end where
-  
-else if(stable_option == 2) then
-
-  where (stable .and. zeta < zeta_trans)
-    phi_m = 1 + 5.0*zeta
-  end where
-  where (stable .and. zeta >= zeta_trans)
-    phi_m = lambda + b_stab*zeta
-  end where
-
-endif
-
-return
-end subroutine mo_derivative_m
-
-!=======================================================================
-
-subroutine mo_derivative_t(phi_t, zeta, mask)
-
-! the differential similarity function for buoyancy and tracers
-
-real    , intent(out),  dimension(:) :: phi_t
-real    , intent(in),   dimension(:) :: zeta
-logical , intent(in),   dimension(:) :: mask
-
-logical, dimension(size(zeta(:))) :: stable, unstable
-
-stable   = mask .and. zeta >= 0.0
-unstable = mask .and. zeta <  0.0
-
-where (unstable) 
-  phi_t = (1 - 16.0*zeta)**(-0.5)
-end where
-
-if(stable_option == 1) then 
-
-  where (stable) 
-    phi_t = 1.0 + zeta*(5.0 + b_stab*zeta)/(1.0 + zeta)
-  end where
-  
-else if(stable_option == 2) then
-
-  where (stable .and. zeta < zeta_trans)
-    phi_t = 1 + 5.0*zeta
-  end where
-  where (stable .and. zeta >= zeta_trans)
-    phi_t = lambda + b_stab*zeta
-  end where
-
-endif
-
-return
-end subroutine mo_derivative_t
-
-!=======================================================================
-
-subroutine mo_integral_tq (psi_t, psi_q, zeta, zeta_t, zeta_q, &
-                           ln_z_zt, ln_z_zq, mask)
-
-! the integral similarity function for moisture and tracers
-
-real    , intent(out), dimension(:) :: psi_t, psi_q
-real    , intent(in),  dimension(:) :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-logical , intent(in),  dimension(:) :: mask
-
-real, dimension(size(zeta(:))) :: x, x_t, x_q
-                               
-logical, dimension(size(zeta(:))) :: stable, unstable, &
-                                  weakly_stable, strongly_stable
-
-stable   = mask .and. zeta >= 0.0
-unstable = mask .and. zeta <  0.0
-
-where(unstable) 
-
-  x     = sqrt(1 - 16.0*zeta)
-  x_t   = sqrt(1 - 16.0*zeta_t)
-  x_q   = sqrt(1 - 16.0*zeta_q)
-  
-  psi_t = ln_z_zt - 2.0*log( (1.0 + x)/(1.0 + x_t) )
-  psi_q = ln_z_zq - 2.0*log( (1.0 + x)/(1.0 + x_q) )
-
-end where
-
-if( stable_option == 1) then
-
-  where (stable) 
-  
-    psi_t = ln_z_zt + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_t)) &
-       + b_stab*(zeta - zeta_t) 
-    psi_q = ln_z_zq + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_q)) &
-       + b_stab*(zeta - zeta_q) 
-       
-  end where
-  
-else if (stable_option == 2) then
-
-  weakly_stable   = stable .and. zeta <= zeta_trans
-  strongly_stable = stable .and. zeta >  zeta_trans
-
-  where (weakly_stable)
-    psi_t = ln_z_zt + 5.0*(zeta - zeta_t) 
-    psi_q = ln_z_zq + 5.0*(zeta - zeta_q) 
-  end where
-  
-  where(strongly_stable)
-    x = (lambda - 1.0)*log(zeta/zeta_trans) + b_stab*(zeta - zeta_trans)
-  endwhere
-  
-  where (strongly_stable .and. zeta_t <= zeta_trans)
-    psi_t = ln_z_zt + x + 5.0*(zeta_trans - zeta_t)
-  end where
-  where (strongly_stable .and. zeta_t > zeta_trans)
-    psi_t = lambda*ln_z_zt + b_stab*(zeta  - zeta_t)
-  endwhere
-  
-  where (strongly_stable .and. zeta_q <= zeta_trans)
-    psi_q = ln_z_zq + x + 5.0*(zeta_trans - zeta_q)
-  end where
-  where (strongly_stable .and. zeta_q > zeta_trans)
-    psi_q = lambda*ln_z_zq + b_stab*(zeta  - zeta_q)
-  endwhere
-  
-end if
-
-return
-end subroutine mo_integral_tq
-
-!=======================================================================
-
-subroutine mo_integral_m (psi_m, zeta, zeta_0, ln_z_z0, mask)
-
-!  the integral similarity function for momentum
-
-real    , intent(out), dimension(:) :: psi_m
-real    , intent(in),  dimension(:) :: zeta, zeta_0, ln_z_z0
-logical , intent(in),  dimension(:) :: mask
-
-real, dimension(size(zeta(:))) :: x, x_0, x1, x1_0, num, denom, y
-                               
-logical, dimension(size(zeta(:))) :: stable, unstable, &
-                                  weakly_stable, strongly_stable
-
-stable   = mask .and. zeta >= 0.0
-unstable = mask .and. zeta <  0.0
-
-where(unstable) 
-
-  x     = sqrt(1 - 16.0*zeta)
-  x_0   = sqrt(1 - 16.0*zeta_0)
-
-  x      = sqrt(x)
-  x_0    = sqrt(x_0)
-  
-  x1     = 1.0 + x
-  x1_0   = 1.0 + x_0
-  
-  num    = x1*x1*(1.0 + x*x)
-  denom  = x1_0*x1_0*(1.0 + x_0*x_0)
-  y      = atan(x) - atan(x_0)
-  psi_m  = ln_z_z0 - log(num/denom) + 2*y
-  
-end where
-
-if( stable_option == 1) then
-
-  where (stable) 
-    psi_m = ln_z_z0 + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_0)) &
-       + b_stab*(zeta - zeta_0) 
-  end where
-  
-else if (stable_option == 2) then
-
-  weakly_stable   = stable .and. zeta <= zeta_trans
-  strongly_stable = stable .and. zeta >  zeta_trans
-
-  where (weakly_stable)
-    psi_m = ln_z_z0 + 5.0*(zeta - zeta_0) 
-  end where
-  
-  where(strongly_stable)
-    x = (lambda - 1.0)*log(zeta/zeta_trans) + b_stab*(zeta - zeta_trans)
-  endwhere
-  
-  where (strongly_stable .and. zeta_0 <= zeta_trans)
-    psi_m = ln_z_z0 + x + 5.0*(zeta_trans - zeta_0)
-  end where
-  where (strongly_stable .and. zeta_0 > zeta_trans)
-    psi_m = lambda*ln_z_z0 + b_stab*(zeta  - zeta_0)
-  endwhere
-  
-end if
-
-return
-end subroutine mo_integral_m
-
 
 !=======================================================================
 ! The following routines allow the public interfaces to be used
@@ -750,11 +435,11 @@ q_star_1(1) = q_star
 call mo_profile_1d (zref, zref_t, z_1, z0_1, zt_1, zq_1, &
                     u_star_1, b_star_1, q_star_1,        &
                     del_m_1, del_h_1, del_q_1)
-                    
+
 del_m = del_m_1(1)
 del_h = del_h_1(1)
 del_q = del_q_1(1)
-                    
+
 
 return
 end subroutine mo_profile_0d
@@ -775,7 +460,7 @@ do k = 1, size(zref(:))
   if(present(avail)) then
     call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
        u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k), avail)
-  else 
+  else
       call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
        u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k))
   endif
@@ -903,14 +588,19 @@ real, intent(out) :: k_m, k_h
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
+real, dimension(1,1,1) :: z_, k_m_, k_h_
+real, dimension(1,1)   :: u_star_, b_star_
+
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_1 in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = 1
-call monin_obukhov_diff(vonkarm,                           &
+z_(1,1,1) = z; u_star_ = u_star; b_star_ = b_star
+call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & neutral, stable_option, new_mo_option,rich_crit, zeta_trans, &!miz
-          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
+          & neutral,                                       &
+          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
+k_m = k_m_(1,1,1); k_h = k_h_(1,1,1)
 
 end subroutine mo_diff_0d_1
 
@@ -924,15 +614,19 @@ real, intent(out), dimension(:) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
+real, dimension(1,1,size(z)) :: z_, k_m_, k_h_
+real, dimension(1,1)         :: u_star_, b_star_
 
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_n in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = size(z(:))
-call monin_obukhov_diff(vonkarm,                           &
+z_(1,1,:) = z; u_star_ = u_star; b_star_ = b_star
+call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & neutral, stable_option,new_mo_option,rich_crit, zeta_trans, &!miz
-          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
+          & neutral,                                       &
+          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
+k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
 
 end subroutine mo_diff_0d_n
 
