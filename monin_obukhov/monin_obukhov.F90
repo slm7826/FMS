@@ -85,7 +85,6 @@ end interface
 #include <file_version.h>
 
 !=======================================================================
-
 !  DEFAULT VALUES OF NAMELIST PARAMETERS:
 
 real    :: rich_crit      = 2.0
@@ -96,22 +95,16 @@ character(32) :: stable_option  = '1'
 real    :: zeta_trans     = 0.5
 logical :: new_mo_option  = .false.
 
-
 namelist /monin_obukhov_nml/ rich_crit, drag_min_heat, &
                              drag_min_moist, drag_min_mom,      &
                              stable_option, zeta_trans, new_mo_option !miz
 
 !=======================================================================
-
 !  MODULE VARIABLES
 
-real, parameter    :: small  = 1.e-04
-real               :: b_stab, r_crit, lambda, rich_trans
-real               :: sqrt_drag_min_heat, sqrt_drag_min_moist, sqrt_drag_min_mom
 logical            :: module_is_initialized = .false.
 class(most_functions_T), pointer :: most => NULL() ! pointer to an object representing
                    ! stability correction functions
-
 
 contains
 
@@ -181,30 +174,11 @@ case default
         'stable_option = "'//trim(stable_option)//'" is incorrect, use "1", "2", "brutsaert", or "neutral"', FATAL)
 end select
 
-
-b_stab = 1.0/rich_crit
-r_crit = 0.95*rich_crit  ! convergence can get slow if one is
-                         ! close to rich_crit
-
-sqrt_drag_min_heat = 0.0
-if(drag_min_heat.ne.0.0) sqrt_drag_min_heat = sqrt(drag_min_heat)
-
-sqrt_drag_min_moist = 0.0
-if(drag_min_moist.ne.0.0) sqrt_drag_min_moist = sqrt(drag_min_moist)
-
-sqrt_drag_min_mom = 0.0
-if(drag_min_mom.ne.0.0) sqrt_drag_min_mom = sqrt(drag_min_mom)
-
-lambda     = 1.0 + (5.0 - b_stab)*zeta_trans   ! used only if stable_option = 2
-rich_trans = zeta_trans/(1.0 + 5.0*zeta_trans) ! used only if stable_option = 2
-
 module_is_initialized = .true.
 
-return
 end subroutine monin_obukhov_init
 
 !=======================================================================
-
 subroutine monin_obukhov_end
 
 if (associated(most)) deallocate(most)
@@ -213,7 +187,6 @@ module_is_initialized = .false.
 end subroutine monin_obukhov_end
 
 !=======================================================================
-
 subroutine mo_drag_1d &
          (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
           u_star, b_star, avail)
@@ -255,9 +228,7 @@ endif
 
 end subroutine mo_drag_1d
 
-
 !=======================================================================
-
 subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
 
@@ -292,7 +263,6 @@ endif
 end subroutine mo_profile_1d
 
 !=======================================================================
-
 subroutine stable_mix_3d(rich, mix)
 
 real, intent(in) , dimension(:,:,:)  :: rich
@@ -310,11 +280,9 @@ call error_mesg('stable_mix_3d in monin_obukhov_mod', &
 ! call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
 !      & n, rich, mix, ier)
 
-
 end subroutine stable_mix_3d
 
 !=======================================================================
-
 subroutine mo_diff_2d_n(z, u_star, b_star, k_m, k_h)
 
 real, intent(in),  dimension(:,:,:) :: z
@@ -339,8 +307,6 @@ end subroutine mo_diff_2d_n
 ! with different dimensions of the input and output
 !
 !=======================================================================
-
-
 subroutine mo_drag_2d &
     (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
 
@@ -356,8 +322,6 @@ do j = 1, size(pt,2)
                    u_star(:,j), b_star(:,j))
 end do
 
-
-return
 end subroutine mo_drag_2d
 
 !=======================================================================
@@ -387,10 +351,9 @@ drag_q = drag_q_1(1)
 u_star = u_star_1(1)
 b_star = b_star_1(1)
 
-return
 end subroutine mo_drag_0d
-!=======================================================================
 
+!=======================================================================
 subroutine mo_profile_2d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_h, del_q)
 
@@ -406,11 +369,9 @@ do j = 1, size(z,2)
                       del_m(:,j), del_h (:,j), del_q (:,j))
 enddo
 
-return
 end subroutine mo_profile_2d
 
 !=======================================================================
-
 subroutine mo_profile_0d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_h, del_q)
 
@@ -437,12 +398,9 @@ del_m = del_m_1(1)
 del_h = del_h_1(1)
 del_q = del_q_1(1)
 
-
-return
 end subroutine mo_profile_0d
 
 !=======================================================================
-
 subroutine mo_profile_1d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
 
@@ -463,11 +421,9 @@ do k = 1, size(zref(:))
   endif
 enddo
 
-return
 end subroutine mo_profile_1d_n
 
 !=======================================================================
-
 subroutine mo_profile_0d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q)
 
@@ -482,11 +438,9 @@ do k = 1, size(zref(:))
        u_star, b_star, q_star, del_m(k), del_t(k), del_q(k))
 enddo
 
-return
 end subroutine mo_profile_0d_n
 
 !=======================================================================
-
 subroutine mo_profile_2d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q)
 
@@ -501,11 +455,9 @@ do k = 1, size(zref(:))
        u_star, b_star, q_star, del_m(:,:,k), del_t(:,:,k), del_q(:,:,k))
 enddo
 
-return
 end subroutine mo_profile_2d_n
 
 !=======================================================================
-
 subroutine mo_diff_2d_1(z, u_star, b_star, k_m, k_h)
 
 real, intent(in),  dimension(:,:) :: z, u_star, b_star
@@ -520,12 +472,9 @@ call mo_diff_2d_n(z_n, u_star, b_star, k_m_n, k_h_n)
 k_m = k_m_n(:,:,1)
 k_h = k_h_n(:,:,1)
 
-return
 end subroutine mo_diff_2d_1
 
-
 !=======================================================================
-
 subroutine mo_diff_1d_1(z, u_star, b_star, k_m, k_h)
 
 real, intent(in),  dimension(:) :: z, u_star, b_star
@@ -543,11 +492,9 @@ call mo_diff_2d_n(z_n, u_star_n, b_star_n, k_m_n, k_h_n)
 k_m = k_m_n(:,1,1)
 k_h = k_h_n(:,1,1)
 
-return
 end subroutine mo_diff_1d_1
 
 !=======================================================================
-
 subroutine mo_diff_1d_n(z, u_star, b_star, k_m, k_h)
 
 real, intent(in),  dimension(:,:) :: z
@@ -572,11 +519,9 @@ do n = 1, size(z,2)
   k_h(:,n) = k_h2(:,1,n)
 enddo
 
-return
 end subroutine mo_diff_1d_n
 
 !=======================================================================
-
 subroutine mo_diff_0d_1(z, u_star, b_star, k_m, k_h)
 
 real, intent(in)  :: z, u_star, b_star
@@ -601,7 +546,6 @@ k_m = k_m_(1,1,1); k_h = k_h_(1,1,1)
 end subroutine mo_diff_0d_1
 
 !=======================================================================
-
 subroutine mo_diff_0d_n(z, u_star, b_star, k_m, k_h)
 
 real, intent(in),  dimension(:) :: z
@@ -626,7 +570,6 @@ k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
 end subroutine mo_diff_0d_n
 
 !=======================================================================
-
 subroutine stable_mix_2d(rich, mix)
 
 real, intent(in) , dimension(:,:)  :: rich
@@ -640,12 +583,9 @@ call stable_mix_3d(rich_3d, mix_3d)
 
 mix = mix_3d(:,:,1)
 
-return
 end subroutine stable_mix_2d
 
-
 !=======================================================================
-
 subroutine stable_mix_1d(rich, mix)
 
 real, intent(in) , dimension(:)  :: rich
@@ -659,11 +599,9 @@ call stable_mix_3d(rich_3d, mix_3d)
 
 mix = mix_3d(:,1,1)
 
-return
 end subroutine stable_mix_1d
 
 !=======================================================================
-
 subroutine stable_mix_0d(rich, mix)
 
 real, intent(in) :: rich
@@ -672,14 +610,10 @@ real, intent(out) :: mix
 real, dimension(1,1,1) :: rich_3d, mix_3d
 
 rich_3d(1,1,1) = rich
-
 call stable_mix_3d(rich_3d, mix_3d)
-
 mix = mix_3d(1,1,1)
 
-return
 end subroutine stable_mix_0d
-!=======================================================================
 
 end module monin_obukhov_mod
 
