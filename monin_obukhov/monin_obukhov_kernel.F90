@@ -92,9 +92,9 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
      & error, zeta_min, max_iter, small,                         &
      & drag_min_heat, drag_min_moist, drag_min_mom,              &
      & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-     & drag_q, u_star, b_star, rich, zeta, lavail, avail, ier)
+     & drag_q, u_star, b_star, rich, zeta, ier, avail)
 
-  class(most_functions_T), intent(in)     :: most ! set of stability functions
+  class(most_functions_T), intent(in)   :: most ! set of stability functions
   real   , intent(in   )                :: grav
   real   , intent(in   )                :: vonkarm
   real   , intent(in   )                :: error    ! = 1.e-04
@@ -105,9 +105,8 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: pt, pt0, z, z0, zt, zq, speed
   real   , intent(inout), dimension(n)  :: drag_m, drag_t, drag_q, u_star, b_star, zeta, rich
-  logical, intent(in   )                :: lavail ! whether to use provided mask or not
-  logical, intent(in   ), dimension(n)  :: avail  ! provided mask
   integer, intent(out  )                :: ier
+  logical, intent(in   ), dimension(n), optional :: avail  ! provided mask
 
   real   , dimension(n) :: fm, ft, fq, zz
   logical, dimension(n) :: mask, mask_1, mask_2
@@ -127,8 +126,11 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
   sqrt_drag_min_mom = 0.0
   if(drag_min_mom.ne.0.0) sqrt_drag_min_mom = sqrt(drag_min_mom)
 
-  mask = .true.
-  if(lavail) mask = avail
+  if(present(avail)) then
+     mask = avail
+  else
+     mask = .true.
+  endif
 
   where(mask)
      delta_b = grav*(pt0 - pt)/pt0
@@ -304,7 +306,7 @@ end subroutine monin_obukhov_solve_zeta
 _PURE subroutine monin_obukhov_profile_1d(most, &
      vonkarm, &
      & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
-     & del_m, del_t, del_q, lavail, avail, ier)
+     & del_m, del_t, del_q, ier, avail)
 
   class(most_functions_T), intent(in) :: most
   real   , intent(in   )                :: vonkarm
@@ -312,9 +314,8 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
   real,    intent(in   )                :: zref, zref_t
   real,    intent(in   ), dimension(n)  :: z, z0, zt, zq, u_star, b_star, q_star
   real,    intent(  out), dimension(n)  :: del_m, del_t, del_q
-  logical, intent(in   )                :: lavail ! whether to use provided mask or not
-  logical, intent(in   ), dimension(n)  :: avail  ! provided mask
   integer, intent(out  )                :: ier
+  logical, intent(in   ), dimension(n), optional :: avail ! provided mask
 
   real, dimension(n) :: zeta, zeta_0, zeta_t, zeta_q, zeta_ref, zeta_ref_t, &
        ln_z_z0, ln_z_zt, ln_z_zq, ln_z_zref, ln_z_zref_t,  &
@@ -325,8 +326,11 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
 
   ier = 0
 
-  mask = .true.
-  if(lavail) mask = avail
+  if (present(avail)) then
+     mask = avail
+  else
+     mask = .true.
+  endif
 
   del_m = 0.0  ! zero output arrays
   del_t = 0.0

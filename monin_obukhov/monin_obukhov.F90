@@ -190,75 +190,52 @@ end subroutine monin_obukhov_end
 subroutine mo_drag_1d &
          (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
           u_star, b_star, avail)
+  real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
+  real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
+  logical, intent(in), optional, dimension(:) :: avail
 
-real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
-real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
-logical, intent(in), optional, dimension(:) :: avail
+  integer            :: n, ier
 
-logical            :: lavail, avail_dummy(1)
-integer            :: n, ier
+  integer, parameter :: max_iter = 20
+  real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
-integer, parameter :: max_iter = 20
-real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
+  real   , dimension(size(pt)) :: rich, zeta
 
-real   , dimension(size(pt)) :: rich, zeta
+  if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
+       'monin_obukhov_init has not been called', FATAL)
 
-if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
-     'monin_obukhov_init has not been called', FATAL)
-
-n      = size(pt)
-lavail = .false.
-if(present(avail)) lavail = .true.
-
-
-if(lavail) then
-   if (count(avail) .eq. 0) return
-   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
-        & error, zeta_min, max_iter, small,                         &
-        & drag_min_heat, drag_min_moist, drag_min_mom,              &
-        & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, rich, zeta, lavail, avail, ier)
-else
-   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
-        & error, zeta_min, max_iter, small,                         &
-        & drag_min_heat, drag_min_moist, drag_min_mom,              &
-        & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, rich, zeta, lavail, avail_dummy, ier)
-endif
+  if (present(avail)) then
+     if (count(avail) .eq. 0) return
+  endif
+  n = size(pt)
+  call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
+       & error, zeta_min, max_iter, small,                         &
+       & drag_min_heat, drag_min_moist, drag_min_mom,              &
+       & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
+       & drag_q, u_star, b_star, rich, zeta, ier, avail)
 
 end subroutine mo_drag_1d
 
 !=======================================================================
 subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
+  real,    intent(in)                :: zref, zref_t
+  real,    intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
+  real,    intent(out), dimension(:) :: del_m, del_t, del_q
+  logical, intent(in) , optional, dimension(:) :: avail
 
-real,    intent(in)                :: zref, zref_t
-real,    intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
-real,    intent(out), dimension(:) :: del_m, del_t, del_q
-logical, intent(in) , optional, dimension(:) :: avail
+  integer                            :: n, ier
 
-logical                            :: dummy_avail(1)
-integer                            :: n, ier
+  if(.not.module_is_initialized) call error_mesg('mo_profile_1d in monin_obukhov_mod', &
+       'monin_obukhov_init has not been called', FATAL)
 
-if(.not.module_is_initialized) call error_mesg('mo_profile_1d in monin_obukhov_mod', &
-     'monin_obukhov_init has not been called', FATAL)
-
-n = size(z)
-if(present(avail)) then
-
-   if (count(avail) .eq. 0) return
-
-   call monin_obukhov_profile_1d(most, vonkarm, &
-        & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
-        & del_m, del_t, del_q, .true., avail, ier)
-
-else
-
-   call monin_obukhov_profile_1d(most, vonkarm, &
-        & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
-        & del_m, del_t, del_q, .false., dummy_avail, ier)
-
-endif
+  if (present(avail)) then
+     if (count(avail) .eq. 0) return
+  endif
+  n = size(z)
+  call monin_obukhov_profile_1d(most, vonkarm, &
+       & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+       & del_m, del_t, del_q, ier, avail)
 
 end subroutine mo_profile_1d
 
@@ -403,24 +380,17 @@ end subroutine mo_profile_0d
 !=======================================================================
 subroutine mo_profile_1d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
+  real,    intent(in),  dimension(:)   :: zref
+  real,    intent(in) , dimension(:)   :: z, z0, zt, zq, u_star, b_star, q_star
+  real,    intent(out), dimension(:,:) :: del_m, del_t, del_q
+  logical, intent(in) , optional, dimension(:) :: avail
 
-real,    intent(in),  dimension(:)   :: zref
-real,    intent(in) , dimension(:)   :: z, z0, zt, zq, u_star, b_star, q_star
-real,    intent(out), dimension(:,:) :: del_m, del_t, del_q
-logical, intent(in) , optional, dimension(:) :: avail
+  integer :: k
 
-integer :: k
-
-do k = 1, size(zref(:))
-  if(present(avail)) then
-    call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
-       u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k), avail)
-  else
-      call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
-       u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k))
-  endif
-enddo
-
+  do k = 1, size(zref(:))
+     call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
+        u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k), avail)
+  enddo
 end subroutine mo_profile_1d_n
 
 !=======================================================================
