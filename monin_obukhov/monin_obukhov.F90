@@ -53,7 +53,8 @@ private
 !=======================================================================
 
 interface mo_drag
-    module procedure  mo_drag_0d, mo_drag_1d, mo_drag_2d
+!    module procedure  mo_drag_0d, mo_drag_1d, mo_drag_2d
+    module procedure  mo_drag_1d
 end interface
 
 
@@ -186,10 +187,11 @@ end subroutine monin_obukhov_end
 
 subroutine mo_drag_1d &
          (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
-          u_star, b_star, avail)
+          u_star, b_star, rich, zeta, phi_m, phi_t, avail)
 
 real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
 real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
+real, intent(inout), dimension(:) :: rich, zeta, phi_m, phi_t
 logical, intent(in), optional, dimension(:) :: avail
 
 logical            :: lavail, avail_dummy(1)
@@ -215,14 +217,16 @@ if(lavail) then
         & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, lavail, avail, ier)
+        & drag_q, u_star, b_star, rich, zeta, phi_m, phi_t,         &
+        & lavail, avail, ier)
 else
    call monin_obukhov_drag_1d(grav, vonkarm,               &
         & error, zeta_min, max_iter, small,                         &
         & neutral, stable_option, new_mo_option, rich_crit, zeta_trans, &!miz
         & drag_min_heat, drag_min_moist, drag_min_mom,              &
         & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-        & drag_q, u_star, b_star, lavail, avail_dummy, ier)
+        & drag_q, u_star, b_star, rich, zeta, phi_m, phi_t,         &
+        & lavail, avail_dummy, ier)
 endif
 
 end subroutine mo_drag_1d
@@ -648,18 +652,20 @@ end subroutine mo_integral_m
 
 
 subroutine mo_drag_2d &
-    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
+    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star, &
+     rich, zeta, phi_m, phi_t)
 
 real, intent(in)   , dimension(:,:) :: z, speed, pt, pt0, z0, zt, zq
 real, intent(out)  , dimension(:,:) :: drag_m, drag_t, drag_q
 real, intent(inout), dimension(:,:) :: u_star, b_star
+real, intent(out)  , dimension(:,:) :: rich, zeta, phi_m, phi_t
 
 integer :: j
 
 do j = 1, size(pt,2)
   call mo_drag_1d (pt(:,j), pt0(:,j), z(:,j), z0(:,j), zt(:,j), zq(:,j), &
                    speed(:,j), drag_m(:,j), drag_t(:,j), drag_q(:,j), &
-                   u_star(:,j), b_star(:,j))
+                   u_star(:,j), b_star(:,j), rich(:,j), zeta(:,j), phi_m(:,j), phi_t(:,j))
 end do
 
 
@@ -668,13 +674,16 @@ end subroutine mo_drag_2d
 
 !=======================================================================
 subroutine mo_drag_0d &
-    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
+    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star, &
+     rich, zeta, phi_m, phi_t)
 
 real, intent(in)    :: z, speed, pt, pt0, z0, zt, zq
 real, intent(out)   :: drag_m, drag_t, drag_q, u_star, b_star
+real, intent(out)   :: rich, zeta, phi_m, phi_t
 
 real, dimension(1) :: pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, speed_1, &
-                      drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1
+                      drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1, &
+                      rich_1, zeta_1, phi_m_1, phi_t_1
 
 pt_1   (1) = pt
 pt0_1  (1) = pt0
@@ -685,15 +694,19 @@ zq_1   (1) = zq
 speed_1(1) = speed
 
 call mo_drag_1d (pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, speed_1, &
-                 drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1)
+                 drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1, &
+                 rich_1, zeta_1, phi_m_1, phi_t_1)
 
 drag_m = drag_m_1(1)
 drag_t = drag_t_1(1)
 drag_q = drag_q_1(1)
 u_star = u_star_1(1)
 b_star = b_star_1(1)
+rich   = rich_1(1)
+zeta   = zeta_1(1)
+phi_m  = phi_m_1(1)
+phi_t  = phi_t_1(1)
 
-return
 end subroutine mo_drag_0d
 !=======================================================================
 

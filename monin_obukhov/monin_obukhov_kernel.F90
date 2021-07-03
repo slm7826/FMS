@@ -90,8 +90,12 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
      & error, zeta_min, max_iter, small,                         &
      & neutral, stable_option, new_mo_option, rich_crit, zeta_trans,&
      & drag_min_heat, drag_min_moist, drag_min_mom,              &
-     & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
-     & drag_q, u_star, b_star, lavail, avail, ier)
+     & n, pt, pt0, z, z0, zt, zq, speed, &
+     ! output
+     & drag_m, drag_t, drag_q, u_star, b_star, &
+     & rich, zeta, phi_m, phi_t, & ! for diagnostics and heterogeneity effect on PBL
+     ! optionals
+     & lavail, avail, ier)
 
   real   , intent(in   )                :: grav
   real   , intent(in   )                :: vonkarm
@@ -107,11 +111,12 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: pt, pt0, z, z0, zt, zq, speed
   real   , intent(inout), dimension(n)  :: drag_m, drag_t, drag_q, u_star, b_star
+  real   , intent(inout), dimension(n)  :: rich, zeta, phi_m, phi_t
   logical, intent(in   )                :: lavail ! whether to use provided mask or not
   logical, intent(in   ), dimension(n)  :: avail  ! provided mask
   integer, intent(out  )                :: ier
 
-  real   , dimension(n) :: rich, fm, ft, fq, zz
+  real   , dimension(n) :: fm, ft, fq, zz
   logical, dimension(n) :: mask, mask_1, mask_2
   real   , dimension(n) :: delta_b !!, us, bs, qs
   real                  :: r_crit, sqrt_drag_min_heat
@@ -155,6 +160,9 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
            drag_q(i)    = us*qs
            u_star(i) = us*speed(i)
            b_star(i) = bs*delta_b(i)
+
+           phi_m = 1
+           phi_t = 1
         end if
      enddo
 
@@ -177,7 +185,7 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
 
      call monin_obukhov_solve_zeta (error, zeta_min, max_iter, small, &
           & stable_option, new_mo_option, rich_crit, zeta_trans,      &
-          & n, rich, zz, z0, zt, zq, fm, ft, fq, mask_1, ier)
+          & n, rich, zz, z0, zt, zq, fm, ft, fq, zeta, mask_1, ier)
 
      do i = 1, n
         if(mask_1(i)) then
@@ -192,6 +200,13 @@ _PURE subroutine monin_obukhov_drag_1d(grav, vonkarm,               &
         endif
      enddo
 
+     ! we do not actually solve MO for rich>=r_crit; not clear what that would do to
+     ! calculations of phi_m and phi_t; perhaps we need to use mask_1 in derivative calls
+     ! and do some different calculations when it is FALSE?
+     call monin_obukhov_derivative_m(stable_option, rich_crit, zeta_trans, &
+          & n, phi_m(:), zeta(:), mask, ier)
+     call monin_obukhov_derivative_t(stable_option, new_mo_option, rich_crit, zeta_trans, &
+          & n, phi_t(:), zeta(:), mask, ier)
   end if
 
 end subroutine monin_obukhov_drag_1d
@@ -199,7 +214,7 @@ end subroutine monin_obukhov_drag_1d
 
 _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &
      & stable_option, new_mo_option, rich_crit, zeta_trans,        & !miz
-     & n, rich, z, z0, zt, zq, f_m, f_t, f_q, mask, ier)
+     & n, rich, z, z0, zt, zq, f_m, f_t, f_q, zeta, mask, ier)
 
   real   , intent(in   )                :: error    ! = 1.e-04
   real   , intent(in   )                :: zeta_min ! = 1.e-06
@@ -211,14 +226,14 @@ _PURE subroutine monin_obukhov_solve_zeta(error, zeta_min, max_iter, small,  &
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: rich, z, z0, zt, zq
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(  out), dimension(n)  :: f_m, f_t, f_q
+  real   , intent(  out), dimension(n)  :: f_m, f_t, f_q, zeta
   integer, intent(  out)                :: ier
 
   real    :: max_cor
   integer :: iter
   real, dimension(n) ::   &
        d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
-       ln_z_z0, ln_z_zt, ln_z_zq, zeta,                    &
+       ln_z_z0, ln_z_zt, ln_z_zq,                          &
        phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
        zeta_0, zeta_t, zeta_q, df_m, df_t
   logical, dimension(n) :: mask_1
