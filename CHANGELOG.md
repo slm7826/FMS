@@ -6,6 +6,102 @@ and this project uses `yyyy.rr[.pp]`, where `yyyy` is the year a patch is releas
 `rr` is a sequential release number (starting from `01`), and an optional two-digit
 sequential patch number (starting from `01`).
 
+## [2021.02] - 2021-05-20
+### Added
+- FMS2_IO: Added fms2_io support for boundary condition restarts. `register_restart_region_2d` and `register_restart_region_3d` were added to fms2_io’s `register_restart_field` interface and `read_restart_bc` and `write_restart_bc` subroutines were added to read and write boundary conditions restarts. See [test_fms/fms2_io/test_bc_restart.F90](https://github.com/NOAA-GFDL/FMS/blob/9d55115a331685e4c6e01f2dfb3b770a9f80fa37/test_fms/fms2_io/test_bc_restart.F90) for sample usage.
+- FMS2_IO: Added fms2_io’s version of set_filename_appendix. The string sent in will be appended to the filename of a restart/history file before the *.nc or before *.tile if tile is in the filename.
+- FMS2_IO: Added workarounds to get fms2_io code working with pgi
+- COUPLER_TYPES: Added fms2_io’s version of `register_restarts_2/3d` and `CT_restore_state_2/3d` to the `coupler_type_register_restarts` and `coupler_type_restore_state` interfaces in coupler_types. The fms_io’s versions were renamed as mpp_io_* and both versions may still be used. See [test_fms/coupler/test_coupler_*d.F90](https://github.com/NOAA-GFDL/FMS/tree/9d55115a331685e4c6e01f2dfb3b770a9f80fa37/test_fms/coupler) for sample usage.
+- MPP_DOMAINS: Added a subroutine `mpp_create_super_grid_domain`, which sets the indices of the input domain to match the supergrid domain.
+- MOSAIC2/GRID2: Added a version of grid.F90 that is suitable for use with fms2_io called grid2.F90, and moved it into the mosaic2 folder along with mosaic2.F90
+- FMS_MOD: Added grid_init and grid_end calls for use with grid2.F90
+- TIME_MANAGER: New `set_date_gregorian` and `get_date_gregorian` function/subroutine that do not use coded_date and date_to_day arrays are added and set as default.  The original get_date_gregorian and set_date_gregorian have been renamed to `get_date_gregorian_old` and `set_date_gregorian_old` and can be used by adding `old_method=.true.` optional argument to set_date and get_date subroutine calls.  This is the first step out of three to remove the memory-consuming `coded_date` and `date_to_day` arrays from the time_manager_mod.
+- FMS GLOBAL MODULE: Adds a new module (libFMS.F90) to be used as a global import for all supported routines/types/variables within FMS. Also adds a separate module (fmsconstants.F90) to be used for constant values from `constants_mod`.
+### Changed
+- FMS2_IO: Adds logic so that the domain decomposition variable attribute is only added if the io_layout is not 1,1.
+- FMS_IO: Moved get_great_circle_algorithm from fms_io to grid2.F90
+- FMS_IO: Moved routines and submodules that were not IO related to fms_mod
+###Removed
+- DIAG_MANAGER: Removed the variable attributes `_FillValue` and `missing_value` from the `time_bounds` variable to be cf compliant
+- FV3GFS: Removes the unused fv3gfs directory
+- MOSAIC/GRID: Removed references in grid.F90 to fms_mod(replaced with mpp_mod direct calls)
+- MOSAIC/GRID: Moved mosaic/mosaic2.F90 to mosaic2 folder
+###Fixed
+- DIAG_MANAGER: Fixed a bug where the variable type of `Time` and `Time_bounds` were different (float vs double) when compiling with 32 bit reals
+- FMS2_IO: Fixed a bug where the code was crashing when you were trying to read/write scalar variables with the domain decomposed fileobj
+### Tag Commit Hashes
+- 2021.02-alpha1 (1a653fcb86a826251e6c8d0a90db897377acc49e)
+- 2021.02-alpha2 (81a5b6ea2559e2c31edbcab32a3230dfc31287be)
+- 2021.02-beta1 (d7e564adee07073febeb263b89158f768d665689)
+- 2021.02-beta2 (9d55115a331685e4c6e01f2dfb3b770a9f80fa37)
+
+## [2021.01] - 2021-03-08
+### Added
+- MPP: A counter for timers to report how many times a timer section is run
+- MPP: Adds missing interfaces to be consistent with interfaces that use the OVERLOAD and no_8byte_integer macros in order to allow building without MPI
+- MPP: Extends interfaces for read and write routines to include 32-bit and 64-bit real data arrays
+- MPP: Adds unit tests for mpp and mpp_io for all public routines with mixed-precision interfaces and expands on existing tests for mixed-precision
+- Adds an .editorconfig file with the project's preferred editor configuration
+- A variable MODDIR in configure.ac for use in Makefiles to find required Fortran module files
+- Adds FMS description web page as a markdown file
+### Changed
+- DOCS: Updates various modules to doxygen style comments and makes adjustments to correctly generate doxygen documentation through the build system
+- PLATFORM: changes usage of platform.h to platform_mod and it's associated data types
+- Changes all previous uses of flush subroutine calls to function calls
+- Changes travis CI to Github actions CI and removed all trailing whitespace
+### Removed
+### Fixed
+- MPP: Fixed a bug causing mpp_get_UG_domain_tile_pe_inf to seg fault from the incorrect assignment of an optional argument
+- FMS: Fixes issues with FMS unit tests failing from pointer allocations by reworking deallocate_unstruct_pass_type 
+- MPP_IO: Fixes unintentional printing of file attributes
+- An issue with the automake build system causing unnecessary rebuilds of source files
+- Fixes CMake build of the FMS library to install configuration files in the appropriate directories; and for OpenMP dependencies to the private
+### Tag Commit Hashes
+- 2021.01-alpha1 (dbe8a1060fb33167c2d12239484226b40fb01fd0)
+- 2021.01-alpha2 (b94eb18fe8e686c5958cbbacc4cf9130873afc85)
+- 2021.01-beta1  (4dcc9a795d9ba0cc959ebd93dda5be5f8473545c)
+
+
+## [2020.04] - 2020-12-07
+### Added
+- DIAG_MANAGER: A namelist flag called `use_mpp_io` if set to .true. will use mpp_io. The default is .false. and will use fms2_io.
+- DIAG_MANAGER: A check is added before a time axis is registered to check if the time axis is registered as a variable
+- DIAG_MANAGER: A unit test was added to test the optional `new_file_freq` functionality
+- XGRID: A namelist flag called `use_mpp_io` if set to .true. will use mpp_io.  The default is .false. and will use fms2_io.
+- INTERPOLATOR: A namelist flag called `use_mpp_io` if set to .true. will use mpp_io. The default is .false. and will use fms2_io.
+- AMIP_INTERP: A namelist flag called `use_mpp_io` if set to .true. will use mpp_io. The default is .false. and will use fms2_io.
+- TOPOGRAPHY: A namelist flag called `use_mpp_io` if set to .true. will use mpp_io. The default is .false. and will use fms2_io.
+- DATA_OVERRIDE: A namelist flag called `use_mpp_bug` if set to .true. will use mpp_io. The default is .false. and will use fms2_io.
+- DATA_OVERRIDE: A namelist flag called `reproduce_null_char_bug_flag` if set to .true. and fms2_io is being used, it will reproduce the mpp_io bug where the axis bounds were calculated instead of read. The default is .false.
+A unit test was added to test the functionality of `get_grid_version_1`
+- FMS2_IO: A unit test was added to test the functionality of `get_valid` and `is_valid`
+### Changed
+- The autotools build has been changed to copy each subdirectory module (.mod) files to a common .mod directory located at the top of the source directory.  This change simplifies the include path specifications.
+- Use F90 module files for external libraries (MPI and NetCDF) for improved interface checking, thereby removing the reliance on library header include files.
+- FMS2_IO: Changed how nest file names are created to be consistent with mpp_io
+- CMAKE: Changed visibility of FMS OpenMP libraries to private in order to avoid conflicts with model libraries
+### Removed
+- LIBFMS: The flag -Duse_mpp_io should not be used and will cause a crash
+- LIBFMS: Macros and logic for interfacing to the Flexible File I/O library
+- LIBFMS: Macros for SGI MIPSpro compilers, including: mpp_node function and SGI Irix specific high resolution timer
+- LIBFMS: Macros for IBM AIX compilers
+- LIBFMS: Files in mpp supporting the CRAY SHMEM communications library
+- LIBFMS: Files in mpp for the SGI PSET approach for communication via GSM
+- MPP_IO: removed left over #ifdefs from backwards compatibility changes
+### Fixed
+- DATA_OVERRIDE: Fixed a bug in `get_grid_version_1` where the variable_size calls were not correct
+- FMS2_IO: Fixed a bug in `get_valid` where the mpp_broadcast calls were done inside `if (root_pe)` blocks
+The fms2_io unit tests were modified so they can work with the AOCC compiler
+- XGRID: Fixed a bug in `load_xgrid` by checking if a dimension exists before calling `get_dimension_size` to avoid `FATAL: NetCDF: Invalid dimension ID or name` crashes
+- DIAG_MANAGER: Fixed a bug where files were getting written with redundant time_bounds data
+- CMAKE: Fixed a bug causing the build to fail on latest versions of Ubuntu
+- CMAKE: Fixed a bug that caused the build to fail from incorrect source paths
+### Tag Commit Hashes
+- 2020.04-alpha1 (2428bb182133b8062432ee1b15974739753ca470)
+- 2020.04-alpha2 (ad9915d83a2f34610cd748fd85889ba1f0f1fc02)
+- 2020.04-alpha3 (e7e48839ab25cc9405abe5d8418e1b6ee6fb2d69)
+- 2020.04-beta1 (6d3ac620423e7ede412e4bb1b36c338775d95193)
+
 ## [2020.03] - 2020-10-08
 ### Added
 - FMS2_IO: Adds header_buffer_val to the fms2io namelist which sets the netcdf header size in bytes. The default value is 16kb
@@ -13,7 +109,7 @@ sequential patch number (starting from `01`).
 - FMS2_IO: Adds support to read netcdf string global attributes
 - FMS2_IO: Adds an optional argument to open_file, `dont_add_res_to_filename`, which indicates that the filename should not be modified (default adds .res to restart file name)
 - FMS2_IO: Modifies the `register_variable_attribute` and `register_global_attribute` interfaces by adding str_len as an argument. This is a workaround to get fms2io to work with PGI because they don't support class (*) with len=*.
-- FMS2_IO: Adds unit test that tests `write_data` and `read_data` when using a domain with a mask table 
+- FMS2_IO: Adds unit test that tests `write_data` and `read_data` when using a domain with a mask table
 - FMS2_IO: Adds fms2io’s version of get_mosaic_tile_grid
 - MPP_IO: Adds `-Duse_mpp_io` compile option for data_override, interpolator, amip_interp, diag_manager, topography, and xgrid to select using mpp_io instead of fms2_io
 - MPP_INIT: Adds unit tests for routines/functions that are called in mpp_init
@@ -24,9 +120,9 @@ sequential patch number (starting from `01`).
 
 ### Fixed
 - DATA_OVERRIDE[2]: Fixes a crash when doing ongrid data_override calls with a domain with halos
-- DIAG_MANAGER[2]: Fixes an issue where time_bnds were written incorrectly for the last time stamp 
+- DIAG_MANAGER[2]: Fixes an issue where time_bnds were written incorrectly for the last time stamp
 - DIAG_MANAGER: Regional diagnostics with a mask table now work
-- FMS2_IO: Unit test includes fms2io_init call to improve functionality 
+- FMS2_IO: Unit test includes fms2io_init call to improve functionality
 - MPP: BOZ literals that are used in variable declaration are converted to integers using the int() function.
 - MPP_DOMAINS2: Fixed unit test
 - FMS_IO: Changes the logic in get_tile_string to fix bug where tile numbers 9 and 99 produce an inappropriate error
@@ -53,7 +149,7 @@ sequential patch number (starting from `01`).
 
 ### Removed
 - GENERAL:  References to the macro _ALLOCATABLE have been replaced with “allocatable”, _ALLOCATED has been replaced with “allocated”, and _NULL has been removed.  It is now assumed that all compilers support the Fortran 2003 standard.  The macros still exist in fms_platforms.h for compatibility within other components.
-- DIAG_MANAGER:  “fms_platform.h” is no longer included in any of the diag_manager routines.  Instead, fms_platform_mod is now being use-associated where necessary.  This fixes an issue for debuggers not providing correct line numbers. 
+- DIAG_MANAGER:  “fms_platform.h” is no longer included in any of the diag_manager routines.  Instead, fms_platform_mod is now being use-associated where necessary.  This fixes an issue for debuggers not providing correct line numbers.
 
 ### Tag Commit Hashes
 - 2020.02-beta1 (bbc6f8d33cfb75a411bbcd3f8423fa74b8b7cdfd)

@@ -55,7 +55,7 @@ program test
  use  diag_manager_mod, only: send_data, diag_axis_init
  use data_override_mod, only: data_override_init, data_override, data_override_UG
   use mpp_mod,         only : FATAL, WARNING, MPP_DEBUG, NOTE, MPP_CLOCK_SYNC,MPP_CLOCK_DETAILED
-  use mpp_mod,         only : mpp_pe, mpp_npes, mpp_node, mpp_root_pe, mpp_error, mpp_set_warn_level
+  use mpp_mod,         only : mpp_pe, mpp_npes, mpp_root_pe, mpp_error, mpp_set_warn_level
   use mpp_mod,         only : mpp_declare_pelist, mpp_set_current_pelist, mpp_sync, mpp_sync_self
   use mpp_mod,         only : mpp_clock_begin, mpp_clock_end, mpp_clock_id
   use mpp_mod,         only : mpp_init, mpp_exit, mpp_chksum, stdout, stderr
@@ -87,8 +87,7 @@ program test
   use mpp_domains_mod, only : mpp_get_UG_compute_domain, mpp_pass_SG_to_UG, mpp_pass_UG_to_SG
   use mpp_domains_mod, only : mpp_get_ug_global_domain, mpp_global_field_ug
   use mpp_memutils_mod, only : mpp_memuse_begin, mpp_memuse_end
-
-#include "../../include/fms_platform.h"
+  use platform_mod
 
  implicit none
 
@@ -664,7 +663,7 @@ contains
   subroutine compare_checksums( a, b, string )
     real, intent(in), dimension(:,:,:) :: a, b
     character(len=*), intent(in) :: string
-    integer(LONG_KIND) :: sum1, sum2
+    integer(i8_kind) :: sum1, sum2
     integer :: i, j, k,pe
 
     ! z1l can not call mpp_sync here since there might be different number of tiles on each pe.
@@ -709,7 +708,7 @@ contains
   subroutine compare_checksums_2D( a, b, string )
     real, intent(in), dimension(:,:) :: a, b
     character(len=*), intent(in) :: string
-    integer(LONG_KIND) :: sum1, sum2
+    integer(i8_kind) :: sum1, sum2
     integer :: i, j,pe
 
     ! z1l can not call mpp_sync here since there might be different number of tiles on each pe.

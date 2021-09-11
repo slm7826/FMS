@@ -1,7 +1,3 @@
-&test_mpp_pset_nml
-test_number = <test_num>
-/
-
 &test_mpp_get_ascii_lines_nml
 test_number = <test_num>
 /
@@ -59,7 +55,6 @@ test_boundary = .false.
 layout_tripolar = 0,0
 test_group = .false.
 test_global_sum = .false.
-test_subset = .false.
 test_unstruct = .false.
 test_nonsym_edge = .false.
 test_halosize_performance = .false.

@@ -20,9 +20,7 @@
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
-#ifdef use_libSMA
-#include <mpp_util_sma.inc>
-#elif defined(use_libMPI)
+#if defined(use_libMPI)
 #include <mpp_util_mpi.inc>
 #else
 #include <mpp_util_nocomm.inc>
@@ -113,9 +111,6 @@
 !$OMP single
 !$      errunit = stderr()
 !$      write( errunit,'(/a/)' ) 'FATAL: STDLOG: is called inside a OMP parallel region'
-#ifdef sgi_mipspro
-!$      call TRACE_BACK_STACK_AND_PRINT()
-#endif
 #ifdef use_libMPI
 !$      call MPI_ABORT( MPI_COMM_WORLD, 1, error )
 #else
@@ -128,7 +123,7 @@
        write(this_pe,'(a,i6.6,a)') '.',pe,'.out'
        inquire( file=trim(configfile)//this_pe, opened=opened )
        if( opened )then
-          call FLUSH(log_unit)
+          FLUSH(log_unit)
        else
           log_unit=get_unit()
           open( unit=log_unit, status='UNKNOWN', file=trim(configfile)//this_pe, position='APPEND', err=10 )
@@ -137,7 +132,7 @@
     else
        inquire( unit=etc_unit, opened=opened )
        if( opened )then
-          call FLUSH(etc_unit)
+          FLUSH(etc_unit)
        else
           open( unit=etc_unit, status='UNKNOWN', file=trim(etcfile), position='APPEND', err=11 )
        end if
@@ -439,17 +434,6 @@ end function rarray_to_char
   end function mpp_pe
 
   !#####################################################################
-  function mpp_node()
-!calls mld_id from threadloc.c on sgi, which returns the hardware node ID from /hw/nodenum/...
-    integer :: mpp_node
-    integer :: mld_id
-
-    if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_NODE: You must first call mpp_init.' )
-    mpp_node = mld_id()
-    return
-  end function mpp_node
-
-  !#####################################################################
   ! <FUNCTION NAME="mpp_npes">
   !  <OVERVIEW>
   !    Returns processor count for current pelist.
@@ -522,9 +506,6 @@ end function rarray_to_char
   !    together for the <TT>MPI_COMM_CREATE</TT> call. The parent is
   !    typically <TT>MPI_COMM_WORLD</TT>, though it could also be a subset
   !    that includes all PEs in <TT>pelist</TT>.
-  !
-  !    The restriction does not apply to SMA but to have uniform code, you
-  !    may as well call it.
   !
   !    This call implies synchronization across the PEs in the current
   !    pelist, of which <TT>pelist</TT> is a subset.
@@ -752,6 +733,7 @@ end function rarray_to_char
     integer                       :: i
 
     clocks(id)%name = name
+    clocks(id)%hits = 0
     clocks(id)%tick = 0
     clocks(id)%total_ticks = 0
     clocks(id)%sync_on_begin = .FALSE.
@@ -864,6 +846,7 @@ end function rarray_to_char
       current_clock = id
     endif
     call SYSTEM_CLOCK( clocks(id)%tick )
+    clocks(id)%hits = clocks(id)%hits + 1
     clocks(id)%is_on = .true.
 !$OMP END MASTER
     return
@@ -872,7 +855,7 @@ end function rarray_to_char
   !#####################################################################
   subroutine mpp_clock_end(id)
     integer, intent(in) :: id
-    integer(LONG_KIND)  :: delta
+    integer(i8_kind)  :: delta
     integer             :: errunit
 
     if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_CLOCK_END: You must first call mpp_init.' )
@@ -924,7 +907,7 @@ end function rarray_to_char
     integer,           intent(in) :: event_id
     integer, intent(in), optional :: bytes
     integer                       :: n
-    integer(LONG_KIND)            :: delta
+    integer(i8_kind)            :: delta
     integer                       :: errunit
 
     if( .not. mpp_record_timing_data )return
@@ -1255,17 +1238,10 @@ end function rarray_to_char
        uppercase = cs  ! simply return input blank string
     else
     uppercase = cs(1:tlen)
-! #etd
-#if defined _CRAYX1
     do k=1, tlen
-         if(uppercase(k:k) >= "a" .and. uppercase(k:k) <= 'z') uppercase(k:k) = achar(ichar(uppercase(k:k))+co)
-       end do
-#else
-      do k=1, tlen
        ca => uppercase(k:k)
        if(ca >= "a" .and. ca <= "z") ca = achar(ichar(ca)+co)
     enddo
-#endif
     endif
   end function uppercase
 
@@ -1283,17 +1259,10 @@ end function rarray_to_char
        lowercase = cs  ! simply return input blank string
     else
     lowercase = cs(1:tlen)
-! #etd
-#if defined _CRAYX1
-       do k=1, tlen
-         if(lowercase(k:k) >= "A" .and. lowercase(k:k) <= 'Z') lowercase(k:k) = achar(ichar(lowercase(k:k))+co)
-       end do
-#else
     do k=1, tlen
        ca => lowercase(k:k)
        if(ca >= "A" .and. ca <= "Z") ca = achar(ichar(ca)+co)
     enddo
-#endif
     endif
   end function lowercase
 
@@ -1332,7 +1301,8 @@ end function rarray_to_char
     character(len=*), intent(in), optional :: pelist_name_in
 ! private variables
     integer :: log_unit
-    integer :: num_lines, i
+    integer :: i
+    integer, dimension(2) :: lines_and_length
     logical :: file_exist
     character(len=len(peset(current_peset_num)%name)) :: pelist_name
     character(len=128) :: filename
@@ -1359,9 +1329,9 @@ end function rarray_to_char
     if (.not. file_exist ) then
        filename='input.nml'
     endif
-    num_lines = get_ascii_file_num_lines(filename, INPUT_STR_LENGTH)
-    allocate(input_nml_file(num_lines))
-    call read_ascii_file(filename, INPUT_STR_LENGTH, input_nml_file)
+    lines_and_length = get_ascii_file_num_lines_and_length(filename)
+    allocate(character(len=lines_and_length(2))::input_nml_file(lines_and_length(1)))
+    call read_ascii_file(filename, lines_and_length(2), input_nml_file)
 
 ! write info logfile
     if (pe == root_pe) then
@@ -1369,7 +1339,7 @@ end function rarray_to_char
        write(log_unit,'(a)')  '========================================================================'
        write(log_unit,'(a)')  'READ_INPUT_NML: '//trim(version)
        write(log_unit,'(a)')  'READ_INPUT_NML: '//trim(filename)//' '
-       do i = 1, num_lines
+       do i = 1, lines_and_length(1)
           write(log_unit,*) trim(input_nml_file(i))
        enddo
     end if
@@ -1438,6 +1408,76 @@ end function rarray_to_char
     get_ascii_file_num_lines = num_lines
 
   end function get_ascii_file_num_lines
+
+  !#######################################################################
+  !> @brief Function to determine the maximum line length and number of lines from an ascii file
+  function get_ascii_file_num_lines_and_length(FILENAME, PELIST)
+    character(len=*), intent(in) :: FILENAME !< name of the file to be read
+    integer, intent(in), optional, dimension(:) :: PELIST !< optional pelist
+
+    integer, dimension(2) :: get_ascii_file_num_lines_and_length !< number of lines (1) and
+                                                                 !! max line length (2)
+    integer :: num_lines, max_length
+    integer, parameter :: LENGTH=1024
+    character(len=LENGTH) :: str_tmp
+    character(len=5) :: text
+    integer :: status, f_unit, from_pe
+    logical :: file_exist
+
+    if( read_ascii_file_on) then
+       call mpp_error(FATAL,  &
+          "mpp_util.inc: get_ascii_file_num_lines is called again before calling read_ascii_file")
+    endif
+    read_ascii_file_on = .true.
+
+    from_pe = root_pe
+    get_ascii_file_num_lines_and_length = -1
+    num_lines = -1
+    max_length = -1
+    if ( pe == root_pe ) then
+       inquire(FILE=FILENAME, EXIST=file_exist)
+
+       if ( file_exist ) then
+          f_unit = get_unit()
+          open(UNIT=f_unit, FILE=FILENAME, ACTION='READ', STATUS='OLD', IOSTAT=status)
+
+          if ( status .ne. 0 ) then
+             write (UNIT=text, FMT='(I5)') status
+             call mpp_error(FATAL, 'get_ascii_file_num_lines: Error opening file:' //trim(FILENAME)// &
+                            '.  (IOSTAT = '//trim(text)//')')
+          else
+             num_lines = 1
+             do
+                read (UNIT=f_unit, FMT='(A)', IOSTAT=status) str_tmp
+                if ( status .lt. 0 ) exit
+                if ( status .gt. 0 ) then
+                   write (UNIT=text, FMT='(I5)') num_lines
+                   call mpp_error(FATAL, 'get_ascii_file_num_lines: Error reading line '//trim(text)// &
+                        ' in file '//trim(FILENAME)//'.')
+                end if
+                if ( len_trim(str_tmp) == LENGTH ) then
+                   write(UNIT=text, FMT='(I5)') length
+                   call mpp_error(FATAL, 'get_ascii_file_num_lines: Length of output string ('//trim(text)//' is too small.&
+                        & Increase the LENGTH value.')
+                end if
+                if (len_trim(str_tmp) > max_length) max_length = len_trim(str_tmp)
+                num_lines = num_lines + 1
+             end do
+             close(UNIT=f_unit)
+          end if
+       else
+          call mpp_error(FATAL, 'get_ascii_file_num_lines: File '//trim(FILENAME)//' does not exist.')
+       end if
+       max_length = max_length+1
+    end if
+
+    ! Broadcast number of lines
+    call mpp_broadcast(num_lines, from_pe, PELIST=PELIST)
+    call mpp_broadcast(max_length, from_pe, PELIST=PELIST)
+    get_ascii_file_num_lines_and_length(1) = num_lines
+    get_ascii_file_num_lines_and_length(2) = max_length
+
+  end function get_ascii_file_num_lines_and_length
 
   !-----------------------------------------------------------------------
   !

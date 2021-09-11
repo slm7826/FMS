@@ -104,7 +104,7 @@
      type(validtype),    intent(out),                 optional :: valid
      real,               intent(out),                 optional :: scale
      real,               intent(out),                 optional :: add
-     integer(LONG_KIND), intent(out),   dimension(:), optional :: checksum
+     integer(i8_kind), intent(out),   dimension(:), optional :: checksum
 
      type(atttype),      intent(inout), dimension(:), optional :: atts
      type(axistype),     intent(inout), dimension(:), optional :: axes
@@ -333,7 +333,7 @@
 !     call mpp_get_times( unit, time_values )
 !   </TEMPLATE>
 !   <IN NAME="unit" TYPE="integer"> </IN>
-!   <INOUT NAME="time_values" TYPE="real(DOUBLE_KIND)" DIM="(:)"> </INOUT>
+!   <INOUT NAME="time_values" TYPE="real(r8_kind)" DIM="(:)"> </INOUT>
 ! </SUBROUTINE>
 
    subroutine mpp_get_times( unit, time_values )
@@ -515,20 +515,6 @@
 
       return
    end function mpp_get_recdimid
-
-    subroutine mpp_get_iospec( unit, iospec )
-      integer, intent(in) :: unit
-      character(len=*), intent(inout) :: iospec
-
-      if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_GET_IOSPEC: must first call mpp_io_init.' )
-      if( .NOT.mpp_file(unit)%opened )call mpp_error( FATAL, 'MPP_GET_IOSPEC: invalid unit number.' )
-#ifdef SGICRAY
-!currently will write to stdout: don't know how to trap and return as string to iospec
-      call ASSIGN( 'assign -V f:'//trim(mpp_file(unit)%name), error )
-#endif
-      return
-    end subroutine mpp_get_iospec
-
 
   !#####################################################################
 ! <FUNCTION NAME="mpp_get_ncid">

@@ -172,7 +172,7 @@
 !      integer :: type, len
 !      character(len=128) :: name
 !      character(len=256)  :: catt
-!      real(FLOAT_KIND), pointer :: fatt(:)
+!      real(r4_kind), pointer :: fatt(:)
 !   end type atttype
 !   </PRE>
 !
@@ -313,8 +313,14 @@
 
 module mpp_io_mod
 
-#include <fms_platform.h>
 #define _MAX_FILE_UNITS 1024
+
+#ifdef use_netCDF
+use netcdf
+use netcdf_nf_data
+use netcdf_nf_interfaces
+use netcdf4_nf_interfaces
+#endif
 
 use mpp_parameter_mod,  only : MPP_WRONLY, MPP_RDONLY, MPP_APPEND, MPP_OVERWR, MPP_ASCII
 use mpp_parameter_mod,  only : MPP_IEEE32, MPP_NATIVE, MPP_NETCDF, MPP_SEQUENTIAL
@@ -349,14 +355,11 @@ use mpp_domains_mod, only: domainUG, &
                            mpp_get_io_domain_UG_layout, &
                            mpp_get_UG_compute_domain, &
                            mpp_get_UG_domain_pelist
+use platform_mod
 !----------
 
 implicit none
 private
-
-#ifdef use_netCDF
-#include <netcdf.inc>
-#endif
 
   !--- public parameters  -----------------------------------------------
   public :: MPP_WRONLY, MPP_RDONLY, MPP_APPEND, MPP_OVERWR, MPP_ASCII, MPP_IEEE32
@@ -371,7 +374,7 @@ private
   public :: default_field, default_axis, default_att
 
   !--- public interface from mpp_io_util.h ----------------------
-  public :: mpp_get_iospec, mpp_get_id, mpp_get_ncid, mpp_get_unit_range, mpp_is_valid
+  public :: mpp_get_id, mpp_get_ncid, mpp_get_unit_range, mpp_is_valid
   public :: mpp_set_unit_range, mpp_get_info, mpp_get_atts, mpp_get_fields
   public :: mpp_get_times, mpp_get_axes, mpp_get_recdimid, mpp_get_axis_data, mpp_get_axis_by_name
   public :: mpp_io_set_stack_size, mpp_get_field_index, mpp_get_axis_index
@@ -442,7 +445,7 @@ type :: atttype
      character(len=256)      :: standard_name   ! CF standard name
      real                    :: min, max, missing, fill, scale, add
      integer                 :: pack
-     integer(LONG_KIND), dimension(3) :: checksum
+     integer(i8_kind), dimension(3) :: checksum
      type(axistype), pointer :: axes(:) =>NULL() !axes associated with field size, time_axis_index redundantly
                                         !hold info already contained in axes. it's clunky and inelegant,
                                         !but required so that axes can be shared among multiple files
@@ -459,14 +462,14 @@ type :: atttype
      integer            :: action, format, access, threading, fileset, record, ncid
      logical            :: opened, initialized, nohdrs
      integer            :: time_level
-     real(DOUBLE_KIND)  :: time
+     real(r8_kind)  :: time
      logical            :: valid
      logical            :: write_on_this_pe   ! indicate if will write out from this pe
      logical            :: read_on_this_pe    ! indicate if will read from this pe
      logical            :: io_domain_exist    ! indicate if io_domain exist or not.
      integer            :: id       !variable ID of time axis associated with file (only one time axis per file)
      integer            :: recdimid !dim ID of time axis associated with file (only one time axis per file)
-     real(DOUBLE_KIND), pointer :: time_values(:) =>NULL() ! time axis values are stored here instead of axis%data
+     real(r8_kind), pointer :: time_values(:) =>NULL() ! time axis values are stored here instead of axis%data
                                                   ! since mpp_write assumes these values are not time values.
                                                   ! Not used in mpp_write
      ! additional elements of filetype for mpp_read (ignored for mpp_write)
@@ -579,24 +582,27 @@ type :: atttype
 !  </NOTE>
 ! </INTERFACE>
   interface mpp_read
-     module procedure mpp_read_2ddecomp_r2d
-     module procedure mpp_read_2ddecomp_r3d
-     module procedure mpp_read_2ddecomp_r4d
-     module procedure mpp_read_r0D
-     module procedure mpp_read_r1D
-     module procedure mpp_read_r2D
-     module procedure mpp_read_r3D
-     module procedure mpp_read_r4D
-     module procedure mpp_read_text
-     module procedure mpp_read_region_r2D
-     module procedure mpp_read_region_r3D
-#ifdef OVERLOAD_R8
-     module procedure mpp_read_region_r2D_r8
-     module procedure mpp_read_region_r3D_r8
+     module procedure mpp_read_2ddecomp_r2d_r4
+     module procedure mpp_read_2ddecomp_r3d_r4
+     module procedure mpp_read_2ddecomp_r4d_r4
      module procedure mpp_read_2ddecomp_r2d_r8
      module procedure mpp_read_2ddecomp_r3d_r8
      module procedure mpp_read_2ddecomp_r4d_r8
-#endif
+     module procedure mpp_read_region_r2D_r4
+     module procedure mpp_read_region_r3D_r4
+     module procedure mpp_read_region_r2D_r8
+     module procedure mpp_read_region_r3D_r8
+     module procedure mpp_read_r0D_r4
+     module procedure mpp_read_r1D_r4
+     module procedure mpp_read_r2D_r4
+     module procedure mpp_read_r3D_r4
+     module procedure mpp_read_r4D_r4
+     module procedure mpp_read_r0D_r8
+     module procedure mpp_read_r1D_r8
+     module procedure mpp_read_r2D_r8
+     module procedure mpp_read_r3D_r8
+     module procedure mpp_read_r4D_r8
+     module procedure mpp_read_text
   end interface
 
 !***********************************************************************
@@ -671,9 +677,12 @@ type :: atttype
 !  </NOTE>
 ! </INTERFACE>
   interface mpp_read_compressed
-     module procedure mpp_read_compressed_r1d
-     module procedure mpp_read_compressed_r2d
-     module procedure mpp_read_compressed_r3d
+     module procedure mpp_read_compressed_r1d_r4
+     module procedure mpp_read_compressed_r2d_r4
+     module procedure mpp_read_compressed_r3d_r4
+     module procedure mpp_read_compressed_r1d_r8
+     module procedure mpp_read_compressed_r2d_r8
+     module procedure mpp_read_compressed_r3d_r8
   end interface mpp_read_compressed
 
 
@@ -896,26 +905,27 @@ type :: atttype
 
 
   interface write_record
-     module procedure write_record_default
-#ifdef OVERLOAD_R8
      module procedure write_record_r8
-#endif
+     module procedure write_record_r4
   end interface
 
   interface mpp_write
-     module procedure mpp_write_2ddecomp_r2d
-     module procedure mpp_write_2ddecomp_r3d
-     module procedure mpp_write_2ddecomp_r4d
-#ifdef OVERLOAD_R8
      module procedure mpp_write_2ddecomp_r2d_r8
      module procedure mpp_write_2ddecomp_r3d_r8
      module procedure mpp_write_2ddecomp_r4d_r8
-#endif
-     module procedure mpp_write_r0D
-     module procedure mpp_write_r1D
-     module procedure mpp_write_r2D
-     module procedure mpp_write_r3D
-     module procedure mpp_write_r4D
+     module procedure mpp_write_2ddecomp_r2d_r4
+     module procedure mpp_write_2ddecomp_r3d_r4
+     module procedure mpp_write_2ddecomp_r4d_r4
+     module procedure mpp_write_r0D_r8
+     module procedure mpp_write_r1D_r8
+     module procedure mpp_write_r2D_r8
+     module procedure mpp_write_r3D_r8
+     module procedure mpp_write_r4D_r8
+     module procedure mpp_write_r0D_r4
+     module procedure mpp_write_r1D_r4
+     module procedure mpp_write_r2D_r4
+     module procedure mpp_write_r3D_r4
+     module procedure mpp_write_r4D_r4
      module procedure mpp_write_axis
   end interface
 
@@ -961,9 +971,12 @@ type :: atttype
 !  </NOTE>
 ! </INTERFACE>
   interface mpp_write_compressed
-     module procedure mpp_write_compressed_r1d
-     module procedure mpp_write_compressed_r2d
-     module procedure mpp_write_compressed_r3d
+     module procedure mpp_write_compressed_r1d_r8
+     module procedure mpp_write_compressed_r2d_r8
+     module procedure mpp_write_compressed_r3d_r8
+     module procedure mpp_write_compressed_r1d_r4
+     module procedure mpp_write_compressed_r2d_r4
+     module procedure mpp_write_compressed_r3d_r4
   end interface mpp_write_compressed
 
 !***********************************************************************
@@ -1054,7 +1067,7 @@ type :: atttype
   namelist /mpp_io_nml/header_buffer_val, global_field_on_root_pe, io_clocks_on, &
                        shuffle, deflate_level, cf_compliance
 
-  real(DOUBLE_KIND), allocatable :: mpp_io_stack(:)
+  real(r8_kind), allocatable :: mpp_io_stack(:)
   type(axistype),save            :: default_axis      !provided to users with default components
   type(fieldtype),save           :: default_field     !provided to users with default components
   type(atttype),save             :: default_att       !provided to users with default components
@@ -1071,16 +1084,23 @@ public :: mpp_io_unstructured_write
 public :: mpp_io_unstructured_read
 
 interface mpp_io_unstructured_write
-    module procedure mpp_io_unstructured_write_r_1D
-    module procedure mpp_io_unstructured_write_r_2D
-    module procedure mpp_io_unstructured_write_r_3D
-    module procedure mpp_io_unstructured_write_r_4D
+    module procedure mpp_io_unstructured_write_r8_1D
+    module procedure mpp_io_unstructured_write_r8_2D
+    module procedure mpp_io_unstructured_write_r8_3D
+    module procedure mpp_io_unstructured_write_r8_4D
+    module procedure mpp_io_unstructured_write_r4_1D
+    module procedure mpp_io_unstructured_write_r4_2D
+    module procedure mpp_io_unstructured_write_r4_3D
+    module procedure mpp_io_unstructured_write_r4_4D
 end interface mpp_io_unstructured_write
 
 interface mpp_io_unstructured_read
-    module procedure mpp_io_unstructured_read_r_1D
-    module procedure mpp_io_unstructured_read_r_2D
-    module procedure mpp_io_unstructured_read_r_3D
+    module procedure mpp_io_unstructured_read_r8_1D
+    module procedure mpp_io_unstructured_read_r8_2D
+    module procedure mpp_io_unstructured_read_r8_3D
+    module procedure mpp_io_unstructured_read_r4_1D
+    module procedure mpp_io_unstructured_read_r4_2D
+    module procedure mpp_io_unstructured_read_r4_3D
 end interface mpp_io_unstructured_read
 !----------
 

@@ -36,21 +36,23 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
   integer :: nyd
   integer :: ioff
   integer :: joff
-  real(kind=real64), dimension(:), allocatable :: lon_data
-  real(kind=real64), dimension(:), allocatable :: lat_data
-  real(kind=real64), dimension(:), allocatable :: lev_data
-  real(kind=real64), dimension(:,:,:), allocatable :: temperature_data
-  real(kind=real64), dimension(:,:,:), allocatable :: temperature_data_with_halos
-  real(kind=real64), dimension(:), allocatable :: avg_t_data
-  integer(kind=int32), dimension(:,:), allocatable :: surf_t_data
+  real(kind=r8_kind), dimension(:), allocatable :: lon_data
+  real(kind=r8_kind), dimension(:), allocatable :: lat_data
+  real(kind=r8_kind), dimension(:), allocatable :: lev_data
+  real(kind=r8_kind), dimension(:,:,:), allocatable :: temperature_data
+  real(kind=r8_kind), dimension(:,:,:), allocatable :: temperature_data_with_halos
+  real(kind=r8_kind), dimension(:), allocatable :: avg_t_data
+  integer(kind=i4_kind), dimension(:,:), allocatable :: surf_t_data
   integer :: ndims
   integer, dimension(:), allocatable :: dim_sizes
-  integer(kind=int64), dimension(3) :: out_chksum
-  integer(kind=int64), dimension(3) :: in_chksum
+  integer(kind=i8_kind), dimension(3) :: out_chksum
+  integer(kind=i8_kind), dimension(3) :: in_chksum
   integer, dimension(3) :: chksum_unlim_level
   character(len=256) :: att
   character(len=256), dimension(:), allocatable :: buffer
   character(len=256), dimension(:), allocatable :: buffer2
+  character(len=256) :: str_buffer
+  character(len=256) :: str_buffer2
   logical :: debug
   integer :: err
   integer :: i
@@ -93,10 +95,10 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
                             domain, nc_format="64bit", is_restart=.true.))
 
   !Add some global attributes to the restart file.
-  call register_global_attribute(fileobj, "globalatt1", real(7., kind=real64))
-  call register_global_attribute(fileobj, "globalatt2", real(4., kind=real32))
-  call register_global_attribute(fileobj, "globalatt3", int(3, kind=int32))
-  call register_global_attribute(fileobj, "globalatt4", int(2, kind=int64))
+  call register_global_attribute(fileobj, "globalatt1", real(7., kind=r8_kind))
+  call register_global_attribute(fileobj, "globalatt2", real(4., kind=r4_kind))
+  call register_global_attribute(fileobj, "globalatt3", int(3, kind=i4_kind))
+  call register_global_attribute(fileobj, "globalatt4", int(2, kind=i8_kind))
   call register_global_attribute(fileobj, "globalatt5", "some text", str_len=len_trim("some text"))
 
   !Add dimensions and corresponding variables to the file.
@@ -167,6 +169,7 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
 
   !Add a restart variable.
   allocate(temperature_data(nx, ny, nz))
+  temperature_data(:,:,:) = 0.0
   call register_restart_field(fileobj, "temperature", temperature_data, &
                               (/"lon ", "lat ", "lev ", "time"/))
   call register_variable_attribute(fileobj, "temperature", "units", "K", str_len=len_trim("k"))
@@ -195,6 +198,7 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
 
   !Add a variable whose user-level buffers include space for halos.
   allocate(temperature_data_with_halos(nxd, nyd, nz))
+  temperature_data(:,:,:) = 0.0
   call register_restart_field(fileobj, "temperature_ignore_halos", &
                               temperature_data_with_halos, &
                               (/"lon ", "lat ", "lev ", "time"/))
@@ -255,7 +259,7 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
     enddo
 
     !Write out the times of each "time step".
-    call write_data(fileobj, "time", 1950. + real(i,kind=real32), unlim_dim_level=i)
+    call write_data(fileobj, "time", 1950. + real(i,kind=r4_kind), unlim_dim_level=i)
   enddo
 
   !Write out the restart file.
@@ -304,12 +308,12 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
       call mpp_error(fatal, "Did not read in strings correctly.")
     endif
   enddo
-  call read_data(fileobj, "strings", buffer2(1), corner=ndims)
-  if (trim(buffer2(1)) .ne. trim(buffer(ndims))) then
+  call read_data(fileobj, "strings", str_buffer, corner=ndims)
+  if (trim(str_buffer) .ne. trim(buffer(ndims))) then
     call mpp_error(fatal, "Scalar from array of strings read failed.")
   endif
-  call read_data(fileobj, "filename", buffer2(ndims))
-  if (trim(buffer2(ndims)) .ne. "file1.nc") then
+  call read_data(fileobj, "filename", str_buffer2)
+  if (trim(str_buffer2) .ne. "file1.nc") then
     call mpp_error(fatal, "Did not read in filename variable correctly.")
   endif
   deallocate(buffer)
@@ -320,9 +324,9 @@ subroutine atmosphere_restart_file(domain, nz, nt, debug_flag)
   allocate(dim_sizes(ndims))
   call get_variable_size(fileobj, "temperature", dim_sizes, broadcast=.true.)
   allocate(temperature_data(nx, ny, dim_sizes(3)))
-  temperature_data(:,:,:) = 0.
+  temperature_data(:,:,:) = 0.0
   allocate(temperature_data_with_halos(nxd, nyd, dim_sizes(3)))
-  temperature_data_with_halos(:,:,:) = 0.
+  temperature_data_with_halos(:,:,:) = 0.0
   deallocate(dim_sizes)
 
   ndims = get_variable_num_dimensions(fileobj, "avg_layer_temperature", broadcast=.true.)

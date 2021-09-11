@@ -21,11 +21,11 @@
 # Ed Hartnett 2/21/2019
 # Seth Underwood 10/2/2019
 
-AC_PREREQ([2.59])
+AC_PREREQ([2.69])
 
 # Initialize with name, version, and support email address.
 AC_INIT([GFDL FMS Library],
-  [2020.03],
+  [2021.02.0],
   [gfdl.climate.model.info@noaa.gov],
   [FMS],
   [https://www.gfdl.noaa.gov/fms])
@@ -37,15 +37,22 @@ AC_CANONICAL_BUILD
 # Find out about the target we're building for.
 AC_CANONICAL_TARGET
 
+AC_CONFIG_MACRO_DIR([m4])
+
 AM_INIT_AUTOMAKE([foreign dist-zip subdir-objects])
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
-
-# Keep libtool macros in an m4 directory.
-AC_CONFIG_MACRO_DIR([m4])
 
 # Set up libtool.
 LT_PREREQ([2.4])
 LT_INIT()
+
+# If building on a Cray PE system, check if CRAYPE_LINK_TYPE is 'static'.  If it
+# is, then disable building shared libraries.  Note, the user can still override
+# this by using --enable-shared when running the configure script.
+AS_IF([test x${CRAYPE_VERSION:+yes} = "xyes"],[
+  AS_IF([test x${CRAYPE_LINK_TYP} = "xstatic"],
+        [AC_DISABLE_SHARED])])
+
 
 # Process user optons.
 AC_ARG_ENABLE([mixed-mode],
@@ -66,12 +73,6 @@ AC_ARG_ENABLE([setting-flags],
 AS_IF([test ${enable_setting_flags:-yes} = yes],
   [enable_setting_flags=yes],
   [enable_setting_flags=no])
-AC_ARG_ENABLE([mpp-io],
-  [AS_HELP_STRING([--enable-mpp-io],
-    [Compile using mpp-io. Otherwise compiles using fms2_io.])])
-AS_IF([test ${enable_mpp_io:-no} = no],
-  [enable_mpp_io=no],
-  [enable_mpp_io=yes])
 
 # Does the user want to build documentation?
 AC_MSG_CHECKING([whether documentation should be build (requires doxygen)])
@@ -101,6 +102,9 @@ AC_PROG_CPP
 
 # Find the Fortran compiler.
 AC_PROG_FC
+AC_FC_MODULE_FLAG
+AC_FC_MODULE_EXTENSION
+AC_FC_MODULE_OUTPUT_FLAG
 
 # Find the install program.
 AC_PROG_INSTALL
@@ -148,16 +152,12 @@ AC_LANG_POP(C)
 AC_LANG_PUSH(Fortran)
 if test $with_mpi = yes; then
   # Require MPI
-  GX_FORTRAN_CHECK_HEADERS([mpif.h], [], [AC_MSG_ERROR([Can't find the MPI Fortran header file.  Set FC/CPPFLAGS/FCFLAGS])])
   GX_FC_CHECK_MOD([mpi], [], [], [AC_MSG_ERROR([Can't find the MPI Fortran module.  Set FC/CPPFLAGS/FCFLAGS])])
   AC_CHECK_FUNC([MPI_init], [], [AC_MSG_ERROR([Can't find the MPI Fortran library.  Set FC/LDFLAGS/LIBS])])
 fi
 
 # Require netCDF
-GX_FORTRAN_CHECK_HEADERS([netcdf.inc], [], [AC_MSG_ERROR([Can't find the netCDF Fortran header file.  Set CPPFLAGS/FCFLAGS])])
 GX_FC_CHECK_MOD([netcdf], [], [], [AC_MSG_ERROR([Can't find the netCDF Fortran module.  Set CPPFLAGS/FCFLAGS])])
-GX_FORTRAN_SEARCH_LIBS([nf_create], [netcdff], [@%:@include <netcdf.inc>], [iret = nf_create('foo.nc', 1, ncid)], [],
-  [AC_MSG_ERROR([Can't find the netCDF Fortran library.  Set LDFLAGS/LIBS])])
 GX_FORTRAN_SEARCH_LIBS([nf90_create], [netcdff], [use netcdf], [iret = nf90_create('foo.nc', 1, ncid)], [],
   [AC_MSG_ERROR([Can't find the netCDF Fortran library.  Set LDFLAGS/LIBS])])
 
@@ -219,11 +219,6 @@ if test $enable_setting_flags = yes; then
   if test ! -z "$OPENMP_FCFLAGS"; then
     FCFLAGS="$FCFLAGS $OPENMP_FCFLAGS"
   fi
-
-  # Add mpp io flags
-  if test $enable_mpp_io = yes; then
-    AC_DEFINE([use_mpp_io], [1], [Set to compile using mpp_io])
-  fi
 fi
 
 # Define an AM_CONDITIONAL to determine if you are on a CRAY
@@ -260,7 +255,7 @@ fi
 
 AC_SUBST([FC_VERSION])
 # Strip anything that looks like a flag off of $FC
-FC_NOFLAGS=`echo $CC | sed 's/ -.*//'`
+FC_NOFLAGS=`echo $FC | sed 's/ -.*//'`
 
 if `echo $FC_NOFLAGS | grep ^/ >/dev/null 2>&1`; then
   FC_VERSION="$FC"
@@ -275,6 +270,16 @@ else
 fi
 if test -n "$fc_version_info"; then
   FC_VERSION="$FC_VERSION ( $fc_version_info )"
+fi
+
+# Check if netcdf is version 4.7.4 to skip failing fms2_io tests
+AC_MSG_CHECKING([if netCDF 4.7.4 is loaded])
+if [ test "`nc-config --version`" == "netCDF 4.7.4" ]; then
+  AM_CONDITIONAL([SKIP_FMS2_IO_TESTS], true )
+  AC_MSG_RESULT([yes])
+else
+  AM_CONDITIONAL([SKIP_FMS2_IO_TESTS], false )
+  AC_MSG_RESULT([no])
 fi
 
 #####
@@ -292,62 +297,72 @@ AC_SUBST([AM_CPPFLAGS])
 AC_SUBST([AM_LDFLAGS])
 AC_SUBST([NOUNDEFINED])
 
+# Define the directory where *.mod files will reside.
+# Used in Makefiles.
+AC_SUBST([MODDIR],[\$\(top_builddir\)/.mods])
+
 # These files will be created when the configure script is run.
-AC_CONFIG_FILES([Makefile
-        include/Makefile
-        affinity/Makefile
-        amip_interp/Makefile
-        time_interp/Makefile
-        time_manager/Makefile
-        constants/Makefile
-        platform/Makefile
-        fms/Makefile
-        fms2_io/Makefile
-        fms2_io/include/Makefile
-        mpp/Makefile
-        mpp/include/Makefile
-        tridiagonal/Makefile
-        tracer_manager/Makefile
-        topography/Makefile
-        mosaic/Makefile
-        monin_obukhov/Makefile
-        memutils/Makefile
-        interpolator/Makefile
-        horiz_interp/Makefile
-        field_manager/Makefile
-        exchange/Makefile
-        drifters/Makefile
-        diag_manager/Makefile
-        data_override/Makefile
-        column_diagnostics/Makefile
-        block_control/Makefile
-        axis_utils/Makefile
-        astronomy/Makefile
-        coupler/Makefile
-        diag_integral/Makefile
-        sat_vapor_pres/Makefile
-        random_numbers/Makefile
-        libFMS/Makefile
-	docs/Makefile
-        test_fms/test_common.sh
-        test_fms/Makefile
-        test_fms/diag_manager/Makefile
-        test_fms/data_override/Makefile
-        test_fms/exchange/Makefile
-        test_fms/monin_obukhov/Makefile
-        test_fms/drifters/Makefile
-        test_fms/interpolator/Makefile
-        test_fms/fms2_io/Makefile
-        test_fms/fms/Makefile
-        test_fms/mpp/Makefile
-        test_fms/mpp_io/Makefile
-        test_fms/time_interp/Makefile
-        test_fms/time_manager/Makefile
-        test_fms/horiz_interp/Makefile
-        test_fms/field_manager/Makefile
-        test_fms/axis_utils/Makefile
-        test_fms/mosaic/Makefile
-        test_fms/affinity/Makefile
-        FMS.pc
-        ])
+AC_CONFIG_FILES([
+  Makefile
+  affinity/Makefile
+  amip_interp/Makefile
+  time_interp/Makefile
+  time_manager/Makefile
+  constants/Makefile
+  platform/Makefile
+  fms/Makefile
+  fms2_io/Makefile
+  mpp/Makefile
+  tridiagonal/Makefile
+  tracer_manager/Makefile
+  topography/Makefile
+  mosaic/Makefile
+  mosaic2/Makefile
+  monin_obukhov/Makefile
+  memutils/Makefile
+  interpolator/Makefile
+  horiz_interp/Makefile
+  field_manager/Makefile
+  exchange/Makefile
+  drifters/Makefile
+  diag_manager/Makefile
+  data_override/Makefile
+  column_diagnostics/Makefile
+  block_control/Makefile
+  axis_utils/Makefile
+  astronomy/Makefile
+  coupler/Makefile
+  diag_integral/Makefile
+  sat_vapor_pres/Makefile
+  random_numbers/Makefile
+  libFMS/Makefile
+  docs/Makefile
+  test_fms/test_common.sh
+  test_fms/Makefile
+  test_fms/diag_manager/Makefile
+  test_fms/data_override/Makefile
+  test_fms/exchange/Makefile
+  test_fms/monin_obukhov/Makefile
+  test_fms/drifters/Makefile
+  test_fms/interpolator/Makefile
+  test_fms/fms2_io/Makefile
+  test_fms/fms/Makefile
+  test_fms/mpp/Makefile
+  test_fms/mpp_io/Makefile
+  test_fms/time_interp/Makefile
+  test_fms/time_manager/Makefile
+  test_fms/horiz_interp/Makefile
+  test_fms/field_manager/Makefile
+  test_fms/axis_utils/Makefile
+  test_fms/mosaic/Makefile
+  test_fms/affinity/Makefile
+  test_fms/coupler/Makefile
+  FMS.pc
+  ])
+
 AC_OUTPUT()
+
+## if tests are being skipped, output warning at end of output
+if [ test "`nc-config --version`" == "netCDF 4.7.4" ]; then
+  AC_MSG_RESULT([Warning: netCDF v4.7.4 is loaded. Incompatible fms2_io tests will be skipped and there may be netCDF issues with model runs.])
+fi

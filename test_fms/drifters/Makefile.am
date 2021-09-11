@@ -23,11 +23,10 @@
 # uramirez, Ed Hartnett
 
 # Find the needed mod and .inc files.
-AM_CPPFLAGS = -I${top_builddir}/drifters -I${top_builddir}/mpp \
--I${top_srcdir}/include -I${top_builddir}/fms
+AM_CPPFLAGS = -I$(top_srcdir)/include -I$(MODDIR)
 
 # Link to the FMS library.
-LDADD = ${top_builddir}/libFMS/libFMS.la
+LDADD = $(top_builddir)/libFMS/libFMS.la
 
 # Build these test programs.
 check_PROGRAMS = test_cloud_interpolator test_drifters_input		\

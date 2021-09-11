@@ -23,7 +23,7 @@ cmake_minimum_required(VERSION 3.7...3.15 FATAL_ERROR)
 
 # Define the CMake project
 project(FMS
-  VERSION 2020.03
+  VERSION 2021.02.0
   DESCRIPTION  "GFDL FMS Library"
   HOMEPAGE_URL "https://www.gfdl.noaa.gov/fms"
   LANGUAGES C Fortran)
@@ -96,6 +96,8 @@ list(APPEND fms_fortran_src_files
   coupler/atmos_ocean_fluxes.F90
   coupler/coupler_types.F90
   coupler/ensemble_manager.F90
+  data_override/get_grid_version_fms2io.F90
+  data_override/get_grid_version_mpp.F90
   data_override/data_override.F90
   diag_integral/diag_integral.F90
   diag_manager/diag_axis.F90
@@ -132,12 +134,13 @@ list(APPEND fms_fortran_src_files
   horiz_interp/horiz_interp.F90
   interpolator/interpolator.F90
   memutils/memutils.F90
-  monin_obukhov/monin_obukhov_kernel.F90
+  monin_obukhov/monin_obukhov_inter.F90
   monin_obukhov/monin_obukhov.F90
   mosaic/gradient.F90
   mosaic/grid.F90
   mosaic/mosaic.F90
-  mosaic/mosaic2.F90
+  mosaic2/grid2.F90
+  mosaic2/mosaic2.F90
   mpp/mpp.F90
   mpp/mpp_data.F90
   mpp/mpp_domains.F90
@@ -145,10 +148,9 @@ list(APPEND fms_fortran_src_files
   mpp/mpp_io.F90
   mpp/mpp_memutils.F90
   mpp/mpp_parameter.F90
-  mpp/mpp_pset.F90
   mpp/mpp_utilities.F90
   platform/platform.F90
-  random_numbers/MersenneTwister.F90
+  random_numbers/mersennetwister.F90
   random_numbers/random_numbers.F90
   sat_vapor_pres/sat_vapor_pres_k.F90
   sat_vapor_pres/sat_vapor_pres.F90
@@ -161,6 +163,7 @@ list(APPEND fms_fortran_src_files
   topography/topography.F90
   tracer_manager/tracer_manager.F90
   tridiagonal/tridiagonal.F90
+  libFMS.F90
 )
 
 # Collect FMS C source files
@@ -172,8 +175,6 @@ list(APPEND fms_c_src_files
   mosaic/mosaic_util.c
   mosaic/read_mosaic.c
   mpp/mpp_memuse.c
-  mpp/nsclock.c
-  mpp/threadloc.c
 )
 
 # Collect FMS header files
@@ -186,6 +187,13 @@ list(APPEND fms_header_files
 list(APPEND fms_defs
   use_libMPI
   use_netCDF)
+
+# check gettid
+include(CheckFunctionExists)
+check_function_exists(gettid HAVE_GETTID)
+if(HAVE_GETTID)
+  list(APPEND fms_defs HAVE_GETTID)
+endif()
 
 # Additional (optional) compiler definitions
 if(GFS_PHYS)
@@ -279,7 +287,7 @@ foreach(kind ${kinds})
                                          MPI::MPI_Fortran)
 
   if(OpenMP_Fortran_FOUND)
-    target_link_libraries(${libTgt} PUBLIC OpenMP::OpenMP_Fortran)
+    target_link_libraries(${libTgt} PRIVATE OpenMP::OpenMP_Fortran)
   endif()
 
   add_library(FMS::${libTgt} ALIAS ${libTgt})
@@ -306,16 +314,16 @@ export(EXPORT FMSExports
   FILE fms-targets.cmake)
 
 configure_package_config_file(
-  ${CMAKE_SOURCE_DIR}/cmake/FMSConfig.cmake.in ${CMAKE_BINARY_DIR}/fms-config.cmake
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/FMSConfig.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/fms-config.cmake
   INSTALL_DESTINATION ${CONFIG_INSTALL_DESTINATION})
-install(FILES ${CMAKE_BINARY_DIR}/fms-config.cmake
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fms-config.cmake
   DESTINATION ${CONFIG_INSTALL_DESTINATION})
 
 write_basic_package_version_file(
-  ${CMAKE_BINARY_DIR}/fms-config-version.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/fms-config-version.cmake
   VERSION ${PROJECT_VERSION}
   COMPATIBILITY AnyNewerVersion)
-install(FILES ${CMAKE_BINARY_DIR}/fms-config-version.cmake
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/fms-config-version.cmake
   DESTINATION ${CONFIG_INSTALL_DESTINATION})
 
 install(EXPORT FMSExports

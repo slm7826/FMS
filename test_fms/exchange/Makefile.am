@@ -23,13 +23,10 @@
 # uramirez, Ed Hartnett
 
 # Find the needed mod and .inc files.
-AM_CPPFLAGS = -I${top_srcdir}/include -I${top_builddir}/mpp	\
--I${top_builddir}/fms -I${top_builddir}/constants           \
--I${top_builddir}/exchange -I${top_builddir}/mosaic         \
--I${top_builddir}/coupler -I${top_builddir}/fms2_io
+AM_CPPFLAGS = -I$(top_srcdir)/include -I$(MODDIR)
 
 # Link to FMS library.
-LDADD = ${top_builddir}/libFMS/libFMS.la
+LDADD = $(top_builddir)/libFMS/libFMS.la
 
 # Build this test program.
 check_PROGRAMS = test_xgrid

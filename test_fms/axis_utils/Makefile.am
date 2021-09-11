@@ -23,11 +23,10 @@
 # uramirez, Ed Hartnett
 
 # Find the fms and mpp mod files.
-AM_CPPFLAGS = -I${top_builddir}/axis_utils -I${top_builddir}/fms	\
--I${top_builddir}/mpp
+AM_CPPFLAGS = -I$(MODDIR)
 
 # Link to the FMS library.
-LDADD = ${top_builddir}/libFMS/libFMS.la
+LDADD = $(top_builddir)/libFMS/libFMS.la
 
 # Build this test program.
 check_PROGRAMS = test_axis_utils

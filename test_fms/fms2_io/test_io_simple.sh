@@ -30,8 +30,15 @@
 # make an input.nml for mpp_init to read
 printf "EOF\n&dummy\nEOF" | cat > input.nml
 
+echo "Test the filename_appendix functionality"
+run_test test_file_appendix 1
+
 # run the tests
 run_test test_io_simple 6
 
 echo "Test the get_mosaic_tile_grid functionality"
 run_test test_get_mosaic_tile_grid 6
+
+echo "Test the get_valid is_valid functionality"
+run_test test_get_is_valid 1
+run_test test_get_is_valid 2

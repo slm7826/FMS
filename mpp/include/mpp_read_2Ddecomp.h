@@ -23,19 +23,14 @@
       MPP_TYPE_,        intent(inout) :: data(nwords)
       integer,         intent(in)    :: start(:), axsiz(:)
 
-      integer(SHORT_KIND) :: i2vals(nwords)
+      integer(i2_kind) :: i2vals(nwords)
 !rab used in conjunction with transfer intrinsic to determine size of a variable
       integer(KIND=1) :: one_byte(8)
       integer         :: word_sz
-!#ifdef __sgi
-      integer(INT_KIND) :: ivals(nwords)
-      real(FLOAT_KIND) :: rvals(nwords)
-!#else
-!      integer :: ivals(nwords)
-!      real :: rvals(nwords)
-!#endif
+      integer(i4_kind) :: ivals(nwords)
+      real(r4_kind) :: rvals(nwords)
 
-      real(DOUBLE_KIND) :: r8vals(nwords)
+      real(r8_kind) :: r8vals(nwords)
       pointer( ptr1, i2vals )
       pointer( ptr2, ivals )
       pointer( ptr3, rvals )
@@ -72,13 +67,13 @@
              case(NF_FLOAT)
                 ptr3 = LOC(mpp_io_stack(1))
                 if (size(transfer(rvals(1),one_byte)) .eq. word_sz) then
-                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, data  )
+                  error = NF90_GET_VAR  ( mpp_file(unit)%ncid, field%id, data, start=start, count=axsiz )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale /= 1.0 .or. field%add /= 0.0) then
                      data(:)=data(:)*field%scale + field%add
                   end if
                 else
-                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, rvals  )
+                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, rvals )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale == 1.0 .and. field%add == 0.0) then
                      data(:)=rvals(:)
@@ -89,7 +84,7 @@
              case(NF_DOUBLE)
                 ptr4 = LOC(mpp_io_stack(1))
                 if (size(transfer(r8vals(1),one_byte)) .eq. word_sz) then
-                  error = NF_GET_VARA_DOUBLE( mpp_file(unit)%ncid, field%id, start, axsiz, data )
+                  error = NF90_GET_VAR( mpp_file(unit)%ncid, field%id, data, start=start, count=axsiz )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale /= 1.0 .or. field%add /= 0.0) then
                      data(:)=data(:)*field%scale + field%add

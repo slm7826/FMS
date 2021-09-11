@@ -18,13 +18,13 @@
 !***********************************************************************
 
 program main
-#ifndef use_mpp_io
 use, intrinsic :: iso_fortran_env
 use argparse
 use mpi
 use mpp_mod
 use mpp_domains_mod
 use fms2_io_mod
+use platform_mod
 implicit none
 
 character(len=8), parameter :: green = achar(27)//"[1;32m"
@@ -209,8 +209,8 @@ end subroutine mpi_check
 
 subroutine chksum_match(out_chksum, in_chksum, var_name, debug)
 
-  integer(kind=int64), intent(in) :: out_chksum
-  integer(kind=int64), intent(in) :: in_chksum
+  integer(kind=i8_kind), intent(in) :: out_chksum
+  integer(kind=i8_kind), intent(in) :: in_chksum
   character(len=*), intent(in) :: var_name
   logical, intent(in) :: debug
 
@@ -235,5 +235,4 @@ subroutine chksum_match(out_chksum, in_chksum, var_name, debug)
   endif
 end subroutine chksum_match
 
-#endif
 end program main

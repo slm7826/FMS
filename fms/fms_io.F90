@@ -172,6 +172,8 @@ integer(INT_KIND),parameter,public :: CCIDX = 8
 
 integer, parameter, private :: NIDX=8
 
+logical, private :: warn_string_function = .true.
+
 type meta_type
   type(meta_type), pointer :: prev=>null(), next=>null()
 !!$ Gfortran on gaea does not yet support deferred length character strings
@@ -519,7 +521,6 @@ public  :: set_filename_appendix, get_instance_filename
 public  :: get_filename_appendix, nullify_filename_appendix
 public  :: parse_mask_table
 public  :: get_great_circle_algorithm
-public  :: write_version_number
 character(len=32), save :: filename_appendix = ''
 
 !--- public interface ---
@@ -534,7 +535,6 @@ logical           :: fms_netcdf_restart  = .true.
 character(len=32) :: threading_read      = 'multi'
 character(len=32) :: format              = 'netcdf'
 logical           :: read_all_pe         = .TRUE.
-character(len=64) :: iospec_ieee32       = '-N ieee_32'
 integer           :: max_files_w         = 40
 integer           :: max_files_r         = 40
 integer           :: dr_set_size         = 10
@@ -545,7 +545,7 @@ logical           :: show_open_namelist_file_warning = .false.
 logical           :: debug_mask_list     = .false.
 logical           :: checksum_required   = .true.
   namelist /fms_io_nml/ fms_netcdf_override, fms_netcdf_restart, &
-       threading_read, format, read_all_pe, iospec_ieee32,max_files_w,max_files_r, &
+       threading_read, format, read_all_pe, max_files_w,max_files_r, &
        read_data_bug, time_stamp_restart, print_chksum, show_open_namelist_file_warning, &
        debug_mask_list, checksum_required, dr_set_size
 
@@ -553,6 +553,9 @@ integer            :: pack_size  ! = 1 for double = 2 for float
 
 ! Include variable "version" to be written to log file.
 #include<file_version.h>
+
+! make version public so it can be written in fms_init()
+character(len=*), parameter, public :: fms_io_version = version
 
 !----------
 !ug support
@@ -697,9 +700,6 @@ subroutine fms_io_init()
 
   !This is set here instead of at the end of the routine to prevent the read_data call below from stopping the model
   module_is_initialized = .TRUE.
-
-  ! Record the version number in the log file
-  call write_version_number("FMS_IO_MOD", version)
 
   !--- read INPUT/grid_spec.nc to decide the value of great_circle_algorithm
   !--- great_circle_algorithm could be true only for mosaic grid.
@@ -2492,7 +2492,8 @@ subroutine save_restart(fileObj, time_stamp, directory, append, time_level)
   character(len=256) :: dir
   character(len=80)  :: restartname          ! The restart file name (no dir).
   character(len=336) :: restartpath          ! The restart file path (dir/file).
-
+  integer :: i !< For looping
+  logical :: has_dot !< For determining if the time_stamp has a .
   ! This approach is taken rather than interface overloading in order to preserve
   ! use of the register_restart_field infrastructure
 
@@ -2507,7 +2508,13 @@ subroutine save_restart(fileObj, time_stamp, directory, append, time_level)
      if (PRESENT(time_stamp)) then
         if(len_trim(restartname)+len_trim(time_stamp) > 79) call mpp_error(FATAL, "fms_io(save_restart): " // &
           "Length of restart file name + time_stamp is greater than allowed character length of 79")
-        restartname = trim(time_stamp)//"."//trim(restartname)
+           has_dot = .false.
+           if (time_stamp(len(time_stamp):len(time_stamp)) == ".") has_dot = .true.
+           if (has_dot) then
+              restartname = trim(time_stamp)//trim(restartname)
+           else
+              restartname = trim(time_stamp)//"."//trim(restartname)
+           endif
      endif
   end if
   if(len_trim(dir) > 0) then
@@ -2938,7 +2945,8 @@ subroutine save_unlimited_axis_restart(fileObj,restartpath)
         check_val = mpp_chksum(INT(fileObj%p1di(1,j)%p(:),8))
            cpack = 0  ! Write data as integer*4
         else
-        call mpp_error(FATAL, "fms_io(save_unlimited_axis_restart): There is no pointer associated with the record data of field "// &
+        call mpp_error(FATAL, "fms_io(save_unlimited_axis_restart):"//&
+            " There is no pointer associated with the record data of field "//&
                 trim(cur_var%name)//" of file "//trim(fileObj%name) )
         end if
      call mpp_write_meta(unit,cur_var%field, var_axes(1:num_var_axes), cur_var%name, &
@@ -7351,15 +7359,9 @@ function open_ieee32_file (file, action) result (unit)
      call mpp_error (FATAL,'fms_io(open_ieee32_file): action should be either read or write in file'//trim(file))
   end select
 
-  if (iospec_ieee32(1:1) == ' ') then
-     call mpp_open ( unit, file, form=MPP_IEEE32, action=mpp_action, &
-          access=MPP_SEQUENTIAL, threading=MPP_SINGLE,    &
-          nohdrs=.true. )
-  else
-     call mpp_open ( unit, file, form=MPP_IEEE32, action=mpp_action, &
-          access=MPP_SEQUENTIAL, threading=MPP_SINGLE,    &
-          nohdrs=.true., iospec=iospec_ieee32 )
-  endif
+  call mpp_open ( unit, file, form=MPP_IEEE32, action=mpp_action, &
+       access=MPP_SEQUENTIAL, threading=MPP_SINGLE,    &
+       nohdrs=.true. )
 end function open_ieee32_file
 ! </FUNCTION>
 
@@ -7417,7 +7419,6 @@ end subroutine close_file
 subroutine set_domain (Domain2)
 
   type(domain2D), intent(in), target :: Domain2
-
   if (.NOT.module_is_initialized) call fms_io_init ( )
 
 !  --- set_domain must be called before a read_data or write_data ---
@@ -7692,7 +7693,6 @@ function open_file(file, form, action, access, threading, recl, dist) result(uni
                        fileset=MPP_SINGLE,nohdrs=no_headers, recl=recl )
     else
      ! special open for ieee32 file
-     ! fms_mod has iospec value
      ! pass local action flag to open changing append to write
        action_ieee32 = action_local
        if (lowercase(trim(action_ieee32)) == 'append') action_ieee32 = 'write'
@@ -7709,6 +7709,10 @@ function open_file(file, form, action, access, threading, recl, dist) result(uni
     integer, intent(in) :: n
     character(len=16) :: string_from_integer
 
+    if (mpp_pe() == mpp_root_pe() .and. warn_string_function ) &
+            call mpp_error(WARNING, "The function named string has been moved "// &
+            "from fms_io_mod to fms_mod.  Please update your call.")
+    warn_string_function = .false.
     if(n<0) then
        call mpp_error(FATAL, 'fms_io_mod: n should be non-negative integer, contact developer')
     else if( n<10 ) then
@@ -7739,6 +7743,10 @@ function open_file(file, form, action, access, threading, recl, dist) result(uni
   function string_from_real(a)
     real, intent(in) :: a
     character(len=32) :: string_from_real
+    if (mpp_pe() == mpp_root_pe() .and. warn_string_function ) &
+            call mpp_error(WARNING, "The function named string has been moved "// &
+            "from fms_io_mod to fms_mod.  Please update your call.")
+    warn_string_function = .false.
 
     write(string_from_real,*) a
 
@@ -8589,66 +8597,6 @@ function get_great_circle_algorithm()
 
 end function get_great_circle_algorithm
 
-!#######################################################################
-! <SUBROUTINE NAME="write_version_number">
-
-!   <OVERVIEW>
-!     Prints to the log file (or a specified unit) the (cvs) version id string and
-!     (cvs) tag name.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Prints to the log file (stdlog) or a specified unit the (cvs) version id string
-!      and (cvs) tag name.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!    call write_version_number ( version [, tag, unit] )
-!   </TEMPLATE>
-
-!   <IN NAME="version" TYPE="character(len=*)">
-!    string that contains routine name and version number.
-!   </IN>
-!   <IN NAME="tag" TYPE="character(len=*)">
-!    The tag/name string, this is usually the Name string
-!    returned by CVS when checking out the code.
-!   </IN>
-!   <IN NAME="unit" TYPE="integer">
-!    The Fortran unit number of an open formatted file. If this unit number
-!    is not supplied the log file unit number is used (stdlog).
-!   </IN>
-! prints module version number to the log file of specified unit number
-
-subroutine write_version_number (version, tag, unit)
-
-!   in:  version = string that contains routine name and version number
-!
-!   optional in:
-!        tag = cvs tag name that code was checked out with
-!        unit    = alternate unit number to direct output
-!                  (default: unit=stdlog)
-
-   character(len=*), intent(in) :: version
-   character(len=*), intent(in), optional :: tag
-   integer,          intent(in), optional :: unit
-
-   integer :: logunit
-
-   if (.not.module_is_initialized) call fms_io_init ( )
-
-     logunit = stdlog()
-     if (present(unit)) then
-         logunit = unit
-     else
-       ! only allow stdlog messages on root pe
-         if ( mpp_pe() /= mpp_root_pe() ) return
-     endif
-
-     if (present(tag)) then
-         write (logunit,'(/,80("="),/(a))') trim(version), trim(tag)
-     else
-         write (logunit,'(/,80("="),/(a))') trim(version)
-     endif
-
-end subroutine write_version_number
 ! </SUBROUTINE>
 
 !----------

@@ -22,26 +22,24 @@
 
 # Ed Hartnett 2/22/19
 
-AM_CPPFLAGS = -I${top_srcdir}/include
-AM_CPPFLAGS += -I${top_builddir}/mpp
-AM_CPPFLAGS += -I${top_builddir}/fms
-AM_CPPFLAGS += -I${top_builddir}/constants
+AM_CPPFLAGS = -I$(top_srcdir)/include
+AM_FCFLAGS = $(FC_MODINC). $(FC_MODOUT)$(MODDIR)
 
-noinst_LTLIBRARIES = libmonin_obukhov.la libmonin_obukhov_kernel.la
+noinst_LTLIBRARIES = libmonin_obukhov.la
 
-libmonin_obukhov_la_SOURCES = monin_obukhov.F90
-libmonin_obukhov_kernel_la_SOURCES = monin_obukhov_kernel.F90
+libmonin_obukhov_la_SOURCES = \
+  monin_obukhov.F90 \
+  monin_obukhov_inter.F90
 
-# Note that the name of the mod is different from the name of the F90
-# code for monin_obukhov_kernel.F90. Also note that the mod file for
-# this one does not have "_mod" in the name.
-monin_obukhov_mod.mod: monin_obukhov.lo
-monin_obukhov_inter.mod: monin_obukhov_kernel.lo
-monin_obukhov.lo: monin_obukhov_inter.mod
+monin_obukhov_mod.$(FC_MODEXT): monin_obukhov_inter.$(FC_MODEXT)
 
 # Mod files are built and then installed as headers.
-MODFILES = monin_obukhov_mod.mod monin_obukhov_inter.mod
-include_HEADERS = $(MODFILES)
+MODFILES = \
+  monin_obukhov_inter.$(FC_MODEXT) \
+  monin_obukhov_mod.$(FC_MODEXT)
+nodist_include_HEADERS = $(MODFILES)
 BUILT_SOURCES = $(MODFILES)
 
-CLEANFILES = *.mod
+EXTRA_DIST = monin_obukhov.tech.ps
+
+include $(top_srcdir)/mkmods.mk
