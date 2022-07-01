@@ -37,7 +37,6 @@ public :: monin_obukhov_diff
 public :: monin_obukhov_drag_1d
 public :: monin_obukhov_solve_zeta
 public :: monin_obukhov_profile_1d
-public :: monin_obukhov_stable_mix
 
 
 contains
@@ -378,55 +377,6 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
 
   end if
 end subroutine monin_obukhov_profile_1d
-
-_PURE subroutine monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
-     &                              n, rich, mix, ier)
-
-  integer, intent(in   )                 :: stable_option
-  real   , intent(in   )                 :: rich_crit, zeta_trans
-  integer, intent(in   )                 :: n
-  real   , intent(in   ), dimension(n)   :: rich
-  real   , intent(  out), dimension(n)   :: mix
-  integer, intent(  out)                 :: ier
-
-  real               :: r, a, b, c, zeta, phi
-  real               :: b_stab, rich_trans, lambda
-  integer            :: i
-
-  ier = 0
-
-mix = 0.0
-b_stab     = 1.0/rich_crit
-rich_trans = zeta_trans/(1.0 + 5.0*zeta_trans)
-
-if(stable_option == 1) then
-
-     c = - 1.0
-     do i = 1, n
-        if(rich(i) > 0.0 .and. rich(i) < rich_crit) then
-           r = 1.0/rich(i)
-           a = r - b_stab
-           b = r - (1.0 + 5.0)
-           zeta = (-b + sqrt(b*b - 4.0*a*c))/(2.0*a)
-           phi = 1.0 + b_stab*zeta + (5.0 - b_stab)*zeta/(1.0 + zeta)
-           mix(i) = 1./(phi*phi)
-     endif
-  end do
-
-else if(stable_option == 2) then
-
-  lambda = 1.0 + (5.0 - b_stab)*zeta_trans
-
-  where(rich > 0.0 .and. rich <= rich_trans)
-    mix = (1.0 - 5.0*rich)**2
-  end where
-  where(rich > rich_trans .and. rich < rich_crit)
-    mix = ((1.0 - b_stab*rich)/lambda)**2
-  end where
-
-end if
-
-end subroutine monin_obukhov_stable_mix
 
 end module monin_obukhov_kernel
 

@@ -43,8 +43,7 @@ use monin_obukhov_functions_mod, only: most_functions_T, &
                          make_most1_functions, make_most2_functions, &
                          make_brutsaert_functions, make_neutral_functions
 use monin_obukhov_kernel, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
-                         monin_obukhov_solve_zeta, monin_obukhov_profile_1d, &
-                         monin_obukhov_stable_mix
+                         monin_obukhov_solve_zeta, monin_obukhov_profile_1d
 
 implicit none
 private
@@ -250,12 +249,11 @@ integer :: n, ier
 if(.not.module_is_initialized) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
-call error_mesg('stable_mix_3d in monin_obukhov_mod', &
-     'stable_mix_3d not implemented', FATAL)
+n = size(rich,1)*size(rich,2)*size(rich,3)
+call most%stable_mix(n, rich, mix, ier)
 
-! n = size(rich,1)*size(rich,2)*size(rich,3)
-! call monin_obukhov_stable_mix(stable_option, rich_crit, zeta_trans, &
-!      & n, rich, mix, ier)
+if (ier.ne.0) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
+     'stable_mix calculations for stable_option "'//trim(stable_option)//'" returned an error', FATAL)
 
 end subroutine stable_mix_3d
 

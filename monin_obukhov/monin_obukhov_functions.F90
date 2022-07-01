@@ -18,6 +18,7 @@ contains
   procedure(most_derivative_function), deferred :: derivative_t
   procedure(most_integral_m),          deferred :: integral_m
   procedure(most_integral_tq),         deferred :: integral_tq
+  procedure(most_stable_mix),          deferred :: stable_mix
 end type most_functions_T
 
 abstract interface
@@ -48,6 +49,14 @@ abstract interface
      real   , intent(inout), dimension(n)  :: F_t, F_q
      integer, intent(  out)                :: ier
   end subroutine most_integral_tq
+  _PURE subroutine most_stable_mix(this, n, rich, mix, ier)
+     import :: most_functions_T
+     class(most_functions_T), intent(in)   :: this
+     integer, intent(in   )                :: n
+     real   , intent(in   ), dimension(n)  :: rich
+     real   , intent(  out), dimension(n)  :: mix
+     integer, intent(  out)                :: ier
+  end subroutine most_stable_mix
 end interface
 
 type, extends(most_functions_T) :: neutral_functions_T
@@ -57,6 +66,7 @@ contains
   procedure :: derivative_t => neutral_deriv_t
   procedure :: integral_m   => neutral_integral_m
   procedure :: integral_tq  => neutral_integral_tq
+  procedure :: stable_mix   => neutral_stable_mix
 end type neutral_functions_T
 
 type, extends(most_functions_T) :: most1_functions_T
@@ -66,6 +76,7 @@ contains
   procedure :: derivative_t => most1_deriv_t
   procedure :: integral_m   => most1_integral_m
   procedure :: integral_tq  => most1_integral_tq
+  procedure :: stable_mix   => most1_stable_mix
 end type most1_functions_T
 
 type, extends(most_functions_T) :: most2_functions_T
@@ -76,6 +87,7 @@ contains
   procedure :: derivative_t => most2_deriv_t
   procedure :: integral_m   => most2_integral_m
   procedure :: integral_tq  => most2_integral_tq
+  procedure :: stable_mix   => most2_stable_mix
 end type most2_functions_T
 
 type, extends(most_functions_T) :: brutsaert_functions_T
@@ -86,6 +98,7 @@ contains
   procedure :: derivative_t => brutsaert_deriv_t
   procedure :: integral_m   => brutsaert_integral_m
   procedure :: integral_tq  => brutsaert_integral_tq
+  procedure :: stable_mix   => brutsaert_stable_mix
 end type brutsaert_functions_T
 
 contains ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -150,6 +163,19 @@ _PURE subroutine neutral_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_z
   F_t = ln_z_zt
   F_q = ln_z_zq
 end subroutine neutral_integral_tq
+
+_PURE subroutine neutral_stable_mix(this, n, rich, mix, ier)
+  class(neutral_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  real   , intent(in   ), dimension(n)  :: rich
+  real   , intent(  out), dimension(n)  :: mix
+  integer, intent(  out)                :: ier
+
+  ier = 0
+
+  mix = 0.0
+  where (rich > 0.0) mix = 1.0
+end subroutine neutral_stable_mix
 
 ! ==== first stability option ===========================================================
 function make_most1_functions(rich_crit) result(ptr)
@@ -288,6 +314,35 @@ _PURE subroutine most1_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
   end where
 
 end subroutine most1_integral_tq
+
+_PURE subroutine most1_stable_mix(this, n, rich, mix, ier)
+  class(most1_functions_T), intent(in)  :: this
+  integer, intent(in   )                :: n
+  real   , intent(in   ), dimension(n)  :: rich
+  real   , intent(  out), dimension(n)  :: mix
+  integer, intent(  out)                :: ier
+
+  real    :: r, a, b, c, zeta, phi
+  real    :: b_stab
+  integer :: i
+
+  ier = 0
+
+  mix = 0.0
+  b_stab     = 1.0/this%rich_crit
+
+  c = - 1.0
+  do i = 1, n
+     if(rich(i) > 0.0 .and. rich(i) < this%rich_crit) then
+        r = 1.0/rich(i)
+        a = r - b_stab
+        b = r - (1.0 + 5.0)
+        zeta = (-b + sqrt(b*b - 4.0*a*c))/(2.0*a)
+        phi = 1.0 + b_stab*zeta + (5.0 - b_stab)*zeta/(1.0 + zeta)
+        mix(i) = 1./(phi*phi)
+     endif
+  end do
+end subroutine most1_stable_mix
 
 ! ==== second stability option ===========================================================
 function make_most2_functions(rich_crit, zeta_trans) result(ptr)
@@ -477,6 +532,31 @@ _PURE subroutine most2_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
   end where
 end subroutine most2_integral_tq
 
+_PURE subroutine most2_stable_mix(this, n, rich, mix, ier)
+  class(most2_functions_T), intent(in)  :: this
+  integer, intent(in   )                :: n
+  real   , intent(in   ), dimension(n)  :: rich
+  real   , intent(  out), dimension(n)  :: mix
+  integer, intent(  out)                :: ier
+
+  real    :: b_stab, rich_trans, lambda
+
+  ier = 0
+
+  mix = 0.0
+  b_stab     = 1.0/this%rich_crit
+  rich_trans = this%zeta_trans/(1.0 + 5.0*this%zeta_trans)
+
+  lambda = 1.0 + (5.0 - b_stab)*this%zeta_trans
+
+  where(rich > 0.0 .and. rich <= rich_trans)
+    mix = (1.0 - 5.0*rich)**2
+  end where
+  where(rich > rich_trans .and. rich < this%rich_crit)
+    mix = ((1.0 - b_stab*rich)/lambda)**2
+  end where
+end subroutine most2_stable_mix
+
 ! ==== Brutsaert stability option ===========================================================
 function make_brutsaert_functions(rich_crit) result(ptr)
    class(brutsaert_functions_T), pointer :: ptr
@@ -611,5 +691,19 @@ _PURE subroutine brutsaert_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z
      F_q = ln_z_zq - brutsaert_psi_h(this, zeta) + brutsaert_psi_h(this, zeta_q)
   end where
 end subroutine brutsaert_integral_tq
+
+_PURE subroutine brutsaert_stable_mix(this, n, rich, mix, ier)
+  class(brutsaert_functions_T), intent(in) :: this
+  integer, intent(in   )                :: n
+  real   , intent(in   ), dimension(n)  :: rich
+  real   , intent(  out), dimension(n)  :: mix
+  integer, intent(  out)                :: ier
+
+  ! NOT IMPLEMENTED: solving zeta for given Ri seems complicated because of the
+  ! more complex formulation of stable phi_m and phi_h; possibly solve numerically,
+  ! tabulate, and use lookup table?
+
+  ier = 1
+end subroutine brutsaert_stable_mix
 
 end module monin_obukhov_functions_mod
