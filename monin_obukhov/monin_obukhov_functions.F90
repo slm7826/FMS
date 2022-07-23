@@ -574,26 +574,25 @@ _PURE subroutine brutsaert_deriv_m(this,n,mask,zeta,phi,ier)
   real   , intent(inout), dimension(n)  :: phi
   integer, intent(  out)                :: ier
 
-  logical, dimension(n) :: stable, unstable
-  real   , dimension(n) :: y
+  integer :: i
+  real    :: y
 
   ier = 0
 
-  stable   = mask .and. zeta >= 0.0
-  unstable = mask .and. zeta <  0.0
-
-  where (unstable.and.y <= 1.0/this%b_u**3)
-     y = -zeta
-     phi = (this%a_u + this%b_u * y**(4.0/3.0))/(this%a_u + y)
-  end where
-  where (unstable.and.y > 1.0/this%b_u**3)
-     phi = 1.0
-  end where
-
-  where (stable)
-     phi = 1 + this%a_s * (zeta + zeta**this%b_s*(1+zeta**this%b_s)**(1.0/this%b_s-1))/ &
-                          (zeta + (1+zeta**this%b_s)**(1.0/this%b_s))
-  end where
+  do i = 1, n
+     if (.not.mask(i)) cycle ! skip the points that are masked out
+     if (zeta(i) < 0.0) then ! unstable
+        y = -zeta(i)
+        if (y <= 1.0/this%b_u**3) then
+           phi(i) = (this%a_u + this%b_u * y**(4.0/3.0))/(this%a_u + y)
+        else
+           phi(i) = 1.0
+        endif
+     else ! zeta(i) >= 0.0, stable
+        phi(i) = 1 + this%a_s * (zeta(i) + zeta(i)**this%b_s*(1+zeta(i)**this%b_s)**(1.0/this%b_s-1))/ &
+                                (zeta(i) + (1+zeta(i)**this%b_s)**(1.0/this%b_s))
+     endif
+  enddo
 end subroutine brutsaert_deriv_m
 
 _PURE subroutine brutsaert_deriv_t(this,n,mask,zeta,phi,ier)
