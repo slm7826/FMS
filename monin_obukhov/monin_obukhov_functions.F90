@@ -16,8 +16,9 @@ type, abstract :: most_functions_T
 contains
   procedure(most_derivative_function), deferred :: derivative_m
   procedure(most_derivative_function), deferred :: derivative_t
-  procedure(most_integral_m),          deferred :: integral_m
-  procedure(most_integral_tq),         deferred :: integral_tq
+  procedure(most_integral_function),   deferred :: integral_m
+  procedure(most_integral_function),   deferred :: integral_t
+  procedure(most_integral_function),   deferred :: integral_q
   procedure(most_stable_mix),          deferred :: stable_mix
 end type most_functions_T
 
@@ -31,24 +32,15 @@ abstract interface
      real   , intent(inout), dimension(n)  :: phi
      integer, intent(  out)                :: ier
   end subroutine most_derivative_function
-  _PURE subroutine most_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+  _PURE subroutine most_integral_function(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
      import :: most_functions_T
      class(most_functions_T), intent(in)   :: this
      integer, intent(in   )                :: n
      logical, intent(in   ), dimension(n)  :: mask
      real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
-     real   , intent(inout), dimension(n)  :: F_m
+     real   , intent(inout), dimension(n)  :: F
      integer, intent(  out)                :: ier
-  end subroutine most_integral_m
-  _PURE subroutine most_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
-     import :: most_functions_T
-     class(most_functions_T), intent(in)   :: this
-     integer, intent(in   )                :: n
-     real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-     logical, intent(in   ), dimension(n)  :: mask
-     real   , intent(inout), dimension(n)  :: F_t, F_q
-     integer, intent(  out)                :: ier
-  end subroutine most_integral_tq
+  end subroutine most_integral_function
   _PURE subroutine most_stable_mix(this, n, rich, mix, ier)
      import :: most_functions_T
      class(most_functions_T), intent(in)   :: this
@@ -65,7 +57,8 @@ contains
   procedure :: derivative_m => neutral_deriv_m
   procedure :: derivative_t => neutral_deriv_t
   procedure :: integral_m   => neutral_integral_m
-  procedure :: integral_tq  => neutral_integral_tq
+  procedure :: integral_t   => neutral_integral_tq
+  procedure :: integral_q   => neutral_integral_tq
   procedure :: stable_mix   => neutral_stable_mix
 end type neutral_functions_T
 
@@ -75,7 +68,8 @@ contains
   procedure :: derivative_m => most1_deriv_m
   procedure :: derivative_t => most1_deriv_t
   procedure :: integral_m   => most1_integral_m
-  procedure :: integral_tq  => most1_integral_tq
+  procedure :: integral_t   => most1_integral_tq
+  procedure :: integral_q   => most1_integral_tq
   procedure :: stable_mix   => most1_stable_mix
 end type most1_functions_T
 
@@ -86,7 +80,8 @@ contains
   procedure :: derivative_m => most2_deriv_m
   procedure :: derivative_t => most2_deriv_t
   procedure :: integral_m   => most2_integral_m
-  procedure :: integral_tq  => most2_integral_tq
+  procedure :: integral_t   => most2_integral_tq
+  procedure :: integral_q   => most2_integral_tq
   procedure :: stable_mix   => most2_stable_mix
 end type most2_functions_T
 
@@ -97,7 +92,8 @@ contains
   procedure :: derivative_m => brutsaert_deriv_m
   procedure :: derivative_t => brutsaert_deriv_t
   procedure :: integral_m   => brutsaert_integral_m
-  procedure :: integral_tq  => brutsaert_integral_tq
+  procedure :: integral_t   => brutsaert_integral_tq
+  procedure :: integral_q   => brutsaert_integral_tq
   procedure :: stable_mix   => brutsaert_stable_mix
 end type brutsaert_functions_T
 
@@ -139,29 +135,28 @@ _PURE subroutine neutral_deriv_t(this,n,mask,zeta,phi,ier)
   phi = 1.0
 end subroutine neutral_deriv_t
 
-_PURE subroutine neutral_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+_PURE subroutine neutral_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(neutral_functions_T), intent(in) :: this
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(inout), dimension(n)  :: F_m
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   ier = 0
-  F_m = ln_z_z0
+  F = ln_z_z0
 end subroutine neutral_integral_m
 
-_PURE subroutine neutral_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
+_PURE subroutine neutral_integral_tq(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(neutral_functions_T), intent(in) :: this
   integer, intent(in   )                :: n
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-  real   , intent(inout), dimension(n)  :: F_t, F_q
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   ier = 0
-  F_t = ln_z_zt
-  F_q = ln_z_zq
+  F = ln_z_z0
 end subroutine neutral_integral_tq
 
 _PURE subroutine neutral_stable_mix(this, n, rich, mix, ier)
@@ -238,12 +233,12 @@ _PURE subroutine most1_deriv_t(this,n,mask,zeta,phi,ier)
   end where
 end subroutine most1_deriv_t
 
-_PURE subroutine most1_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+_PURE subroutine most1_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(most1_functions_T), intent(in)     :: this
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(inout), dimension(n)  :: F_m
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   real                   :: b_stab
@@ -270,24 +265,24 @@ _PURE subroutine most1_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier
      num    = x1*x1*(1.0 + x*x)
      denom  = x1_0*x1_0*(1.0 + x_0*x_0)
      y      = atan(x) - atan(x_0)
-     F_m  = ln_z_z0 - log(num/denom) + 2*y
+     F  = ln_z_z0 - log(num/denom) + 2*y
   end where
 
   where (stable)
-     F_m = ln_z_z0 + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_0)) &
+     F = ln_z_z0 + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_0)) &
           + b_stab*(zeta - zeta_0)
   end where
 end subroutine most1_integral_m
 
-_PURE subroutine most1_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
+_PURE subroutine most1_integral_tq(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(most1_functions_T), intent(in)    :: this
   integer, intent(in   )                :: n
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-  real   , intent(inout), dimension(n)  :: F_t, F_q
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
-  real, dimension(n)     :: x, x_t, x_q
+  real, dimension(n)     :: x, x_t
   logical, dimension(n)  :: stable, unstable
   real                   :: b_stab
 
@@ -300,19 +295,14 @@ _PURE subroutine most1_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
 
   where(unstable)
     x     = sqrt(1 - 16.0*zeta)
-    x_t   = sqrt(1 - 16.0*zeta_t)
-    x_q   = sqrt(1 - 16.0*zeta_q)
+    x_t   = sqrt(1 - 16.0*zeta_0)
 
-    F_t = ln_z_zt - 2.0*log( (1.0 + x)/(1.0 + x_t) )
-    F_q = ln_z_zq - 2.0*log( (1.0 + x)/(1.0 + x_q) )
+    F = ln_z_z0 - 2.0*log( (1.0 + x)/(1.0 + x_t) )
   end where
   where (stable)
-    F_t = ln_z_zt + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_t)) &
-       + b_stab*(zeta - zeta_t)
-    F_q = ln_z_zq + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_q)) &
-       + b_stab*(zeta - zeta_q)
+    F = ln_z_z0 + (5.0 - b_stab)*log((1.0 + zeta)/(1.0 + zeta_0)) &
+       + b_stab*(zeta - zeta_0)
   end where
-
 end subroutine most1_integral_tq
 
 _PURE subroutine most1_stable_mix(this, n, rich, mix, ier)
@@ -417,12 +407,12 @@ _PURE subroutine most2_deriv_t(this,n,mask,zeta,phi,ier)
   end where
 end subroutine most2_deriv_t
 
-_PURE subroutine most2_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+_PURE subroutine most2_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(most2_functions_T), intent(in)     :: this
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(inout), dimension(n)  :: F_m
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   real                   :: b_stab, lambda
@@ -450,7 +440,7 @@ _PURE subroutine most2_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier
      num    = x1*x1*(1.0 + x*x)
      denom  = x1_0*x1_0*(1.0 + x_0*x_0)
      y      = atan(x) - atan(x_0)
-     F_m  = ln_z_z0 - log(num/denom) + 2*y
+     F  = ln_z_z0 - log(num/denom) + 2*y
   end where
 
   lambda = 1.0 + (5.0 - b_stab)*this%zeta_trans
@@ -459,7 +449,7 @@ _PURE subroutine most2_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier
   strongly_stable = stable .and. zeta >  this%zeta_trans
 
   where (weakly_stable)
-     F_m = ln_z_z0 + 5.0*(zeta - zeta_0)
+     F = ln_z_z0 + 5.0*(zeta - zeta_0)
   end where
 
   where(strongly_stable)
@@ -467,19 +457,19 @@ _PURE subroutine most2_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier
   end where
 
   where (strongly_stable .and. zeta_0 <= this%zeta_trans)
-     F_m = ln_z_z0 + x + 5.0*(this%zeta_trans - zeta_0)
+     F = ln_z_z0 + x + 5.0*(this%zeta_trans - zeta_0)
   end where
   where (strongly_stable .and. zeta_0 > this%zeta_trans)
-     F_m = lambda*ln_z_z0 + b_stab*(zeta  - zeta_0)
+     F = lambda*ln_z_z0 + b_stab*(zeta  - zeta_0)
   end where
 end subroutine most2_integral_m
 
-_PURE subroutine most2_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
+_PURE subroutine most2_integral_tq(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(most2_functions_T), intent(in)    :: this
   integer, intent(in   )                :: n
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-  real   , intent(inout), dimension(n)  :: F_t, F_q
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   real, dimension(n)     :: x, x_t, x_q
@@ -496,11 +486,9 @@ _PURE subroutine most2_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
 
   where(unstable)
     x     = sqrt(1 - 16.0*zeta)
-    x_t   = sqrt(1 - 16.0*zeta_t)
-    x_q   = sqrt(1 - 16.0*zeta_q)
+    x_t   = sqrt(1 - 16.0*zeta_0)
 
-    F_t = ln_z_zt - 2.0*log( (1.0 + x)/(1.0 + x_t) )
-    F_q = ln_z_zq - 2.0*log( (1.0 + x)/(1.0 + x_q) )
+    F = ln_z_z0 - 2.0*log( (1.0 + x)/(1.0 + x_t) )
   end where
 
   lambda = 1.0 + (5.0 - b_stab)*this%zeta_trans
@@ -509,26 +497,18 @@ _PURE subroutine most2_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt,
   strongly_stable = stable .and. zeta >  this%zeta_trans
 
   where (weakly_stable)
-    F_t = ln_z_zt + 5.0*(zeta - zeta_t)
-    F_q = ln_z_zq + 5.0*(zeta - zeta_q)
+    F = ln_z_z0 + 5.0*(zeta - zeta_0)
   end where
 
   where(strongly_stable)
     x = (lambda - 1.0)*log(zeta/this%zeta_trans) + b_stab*(zeta - this%zeta_trans)
   end where
 
-  where (strongly_stable .and. zeta_t <= this%zeta_trans)
-    F_t = ln_z_zt + x + 5.0*(this%zeta_trans - zeta_t)
+  where (strongly_stable .and. zeta_0 <= this%zeta_trans)
+    F = ln_z_z0 + x + 5.0*(this%zeta_trans - zeta_0)
   end where
-  where (strongly_stable .and. zeta_t > this%zeta_trans)
-    F_t = lambda*ln_z_zt + b_stab*(zeta  - zeta_t)
-  end where
-
-  where (strongly_stable .and. zeta_q <= this%zeta_trans)
-    F_q = ln_z_zq + x + 5.0*(this%zeta_trans - zeta_q)
-  end where
-  where (strongly_stable .and. zeta_q > this%zeta_trans)
-    F_q = lambda*ln_z_zq + b_stab*(zeta  - zeta_q)
+  where (strongly_stable .and. zeta_0 > this%zeta_trans)
+    F = lambda*ln_z_z0 + b_stab*(zeta  - zeta_0)
   end where
 end subroutine most2_integral_tq
 
@@ -646,18 +626,18 @@ elemental real function brutsaert_psi_m(this, zeta) result(psi_m)
   endif
 end function brutsaert_psi_m
 
-_PURE subroutine brutsaert_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F_m, ier)
+_PURE subroutine brutsaert_integral_m(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(brutsaert_functions_T), intent(in)    :: this
   integer, intent(in   )                :: n
   real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(inout), dimension(n)  :: F_m
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   ier = 0
 
   where (mask)
-     F_m = ln_z_z0 - brutsaert_psi_m(this, zeta) + brutsaert_psi_m(this, zeta_0)
+     F = ln_z_z0 - brutsaert_psi_m(this, zeta) + brutsaert_psi_m(this, zeta_0)
   end where
 end subroutine brutsaert_integral_m
 
@@ -677,17 +657,16 @@ elemental real function brutsaert_psi_h(this, zeta) result(psi_h)
   endif
 end function brutsaert_psi_h
 
-_PURE subroutine brutsaert_integral_tq(this, n, mask, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, F_t, F_q, ier)
+_PURE subroutine brutsaert_integral_tq(this, n, mask, zeta, zeta_0, ln_z_z0, F, ier)
   class(brutsaert_functions_T), intent(in)    :: this
   integer, intent(in   )                :: n
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(in   ), dimension(n)  :: zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq
-  real   , intent(inout), dimension(n)  :: F_t, F_q
+  real   , intent(in   ), dimension(n)  :: zeta, zeta_0, ln_z_z0
+  real   , intent(inout), dimension(n)  :: F
   integer, intent(  out)                :: ier
 
   where (mask)
-     F_t = ln_z_zt - brutsaert_psi_h(this, zeta) + brutsaert_psi_h(this, zeta_t)
-     F_q = ln_z_zq - brutsaert_psi_h(this, zeta) + brutsaert_psi_h(this, zeta_q)
+     F = ln_z_z0 - brutsaert_psi_h(this, zeta) + brutsaert_psi_h(this, zeta_0)
   end where
 end subroutine brutsaert_integral_tq
 

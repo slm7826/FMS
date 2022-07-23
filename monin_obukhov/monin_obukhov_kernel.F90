@@ -268,8 +268,9 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
      call most%derivative_t(n, mask_1, zeta,   phi_t  , ier)
      call most%derivative_t(n, mask_1, zeta_t, phi_t_0, ier)
 
-     call most%integral_m  (n, mask_1, zeta, zeta_0, ln_z_z0, f_m, ier)
-     call most%integral_tq (n, mask_1, zeta, zeta_t, zeta_q, ln_z_zt, ln_z_zq, f_t, f_q, ier)
+     call most%integral_m(n, mask_1, zeta, zeta_0, ln_z_z0, f_m, ier)
+     call most%integral_t(n, mask_1, zeta, zeta_t, ln_z_zt, f_t, ier)
+     call most%integral_q(n, mask_1, zeta, zeta_q, ln_z_zq, f_q, ier)
 
      where (mask_1)
         df_m  = (phi_m - phi_m_0)*rzeta
@@ -363,11 +364,14 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
         zeta_ref_t = zref_t*mo_length_inv
      endwhere
 
-     call most%integral_m(n, mask, zeta, zeta_0,   ln_z_z0,   f_m,     ier)
-     call most%integral_m(n, mask, zeta, zeta_ref, ln_z_zref, f_m_ref, ier)
+     call most%integral_m(n, mask, zeta, zeta_0,     ln_z_z0,     f_m,     ier)
+     call most%integral_m(n, mask, zeta, zeta_ref,   ln_z_zref,   f_m_ref, ier)
 
-     call most%integral_tq(n, mask, zeta, zeta_t,     zeta_q,     ln_z_zt,     ln_z_zq,     f_t,     f_q,     ier)
-     call most%integral_tq(n, mask, zeta, zeta_ref_t, zeta_ref_t, ln_z_zref_t, ln_z_zref_t, f_t_ref, f_q_ref, ier)
+     call most%integral_t(n, mask, zeta, zeta_t,     ln_z_zt,     f_t,     ier)
+     call most%integral_t(n, mask, zeta, zeta_ref_t, ln_z_zref_t, f_t_ref, ier)
+
+     call most%integral_q(n, mask, zeta, zeta_q,     ln_z_zq,     f_q,     ier)
+     call most%integral_q(n, mask, zeta, zeta_ref_t, ln_z_zref_t, f_q_ref, ier)
 
      where(mask)
         del_m = 1.0 - f_m_ref/f_m
