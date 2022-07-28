@@ -102,7 +102,10 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
   real   , intent(in   )                :: small    ! = 1.e-04
   real   , intent(in   )                :: drag_min_heat, drag_min_moist, drag_min_mom
   integer, intent(in   )                :: n
-  real   , intent(in   ), dimension(n)  :: pt, pt0, z, z0, zt, zq, speed
+  real   , intent(in   ), dimension(n)  :: pt, pt0
+  real   , intent(in   ), dimension(n)  :: z ! top of the Monin-Obukhov layer (that is, lowest atmos layer height), m
+  real   , intent(in   ), dimension(n)  :: z0, zt, zq ! roughness lengths for momentum, heat, and tracers, respectively, m
+  real   , intent(in   ), dimension(n)  :: speed
   real   , intent(inout), dimension(n)  :: drag_m, drag_t, drag_q, u_star, b_star, zeta, rich
   integer, intent(out  )                :: ier
   logical, intent(in   ), dimension(n), optional :: avail  ! provided mask
@@ -198,14 +201,17 @@ end subroutine monin_obukhov_drag_1d
 _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small,  &
      & n, rich, z, z0, zt, zq, f_m, f_t, f_q, zeta, mask, ier)
   class(most_functions_T), intent(in)     :: most
-  real   , intent(in   )                :: error    ! = 1.e-04
-  real   , intent(in   )                :: zeta_min ! = 1.e-06
-  integer, intent(in   )                :: max_iter ! = 20
+  real   , intent(in   )                :: error    ! = 1.e-04, solution tolerance
+  real   , intent(in   )                :: zeta_min ! = 1.e-06, for zeta < zeta_min solution is assumed neutral
+  integer, intent(in   )                :: max_iter ! = 20 maximum number of iteration steps
   real   , intent(in   )                :: small    ! = 1.e-04
   integer, intent(in   )                :: n
-  real   , intent(in   ), dimension(n)  :: rich, z, z0, zt, zq
+  real   , intent(in   ), dimension(n)  :: rich ! bulk Richardson number
+  real   , intent(in   ), dimension(n)  :: z ! top of the MO layer (that is, lowest atmos layer height), m
+  real   , intent(in   ), dimension(n)  :: z0, zt, zq ! roughness length for momentum, heat, and tracers, respectively m
   logical, intent(in   ), dimension(n)  :: mask
-  real   , intent(  out), dimension(n)  :: f_m, f_t, f_q, zeta
+  real   , intent(  out), dimension(n)  :: f_m, f_t, f_q ! final values of integral stability correction functions for momentum, heat, and tracers respectively
+  real   , intent(  out), dimension(n)  :: zeta ! solution for zeta (z/L)
   integer, intent(  out)                :: ier
 
 
