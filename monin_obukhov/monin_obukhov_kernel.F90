@@ -90,7 +90,7 @@ end subroutine monin_obukhov_diff
 _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
      & error, zeta_min, max_iter, small,                         &
      & drag_min_heat, drag_min_moist, drag_min_mom,              &
-     & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
+     & n, pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t,     &
      & drag_q, u_star, b_star, rich, zeta, ier, avail)
 
   class(most_functions_T), intent(in)   :: most ! set of stability functions
@@ -105,6 +105,7 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
   real   , intent(in   ), dimension(n)  :: pt, pt0
   real   , intent(in   ), dimension(n)  :: z ! top of the Monin-Obukhov layer (that is, lowest atmos layer height), m
   real   , intent(in   ), dimension(n)  :: z0, zt, zq ! roughness lengths for momentum, heat, and tracers, respectively, m
+  real   , intent(in   ), dimension(n)  :: zR ! roughness sublayer length scale, m
   real   , intent(in   ), dimension(n)  :: speed
   real   , intent(inout), dimension(n)  :: drag_m, drag_t, drag_q, u_star, b_star, zeta, rich
   integer, intent(out  )                :: ier
@@ -178,7 +179,7 @@ _PURE subroutine monin_obukhov_drag_1d(most, grav, vonkarm,      &
      enddo
 
      call monin_obukhov_solve_zeta (most, error, zeta_min, max_iter, small, &
-          & n, rich, zz, z0, zt, zq, fm, ft, fq, zeta, mask_1, ier)
+          & n, rich, zz, z0, zt, zq, zR, fm, ft, fq, zeta, mask_1, ier)
 
      do i = 1, n
         if(mask_1(i)) then
@@ -199,7 +200,7 @@ end subroutine monin_obukhov_drag_1d
 
 
 _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small,  &
-     & n, rich, z, z0, zt, zq, f_m, f_t, f_q, zeta, mask, ier)
+     & n, rich, z, z0, zt, zq, zR, f_m, f_t, f_q, zeta, mask, ier)
   class(most_functions_T), intent(in)     :: most
   real   , intent(in   )                :: error    ! = 1.e-04, solution tolerance
   real   , intent(in   )                :: zeta_min ! = 1.e-06, for zeta < zeta_min solution is assumed neutral
@@ -209,6 +210,7 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
   real   , intent(in   ), dimension(n)  :: rich ! bulk Richardson number
   real   , intent(in   ), dimension(n)  :: z ! top of the MO layer (that is, lowest atmos layer height), m
   real   , intent(in   ), dimension(n)  :: z0, zt, zq ! roughness length for momentum, heat, and tracers, respectively m
+  real   , intent(in   ), dimension(n)  :: zR ! roughness sublayer length scale, m
   logical, intent(in   ), dimension(n)  :: mask
   real   , intent(  out), dimension(n)  :: f_m, f_t, f_q ! final values of integral stability correction functions for momentum, heat, and tracers respectively
   real   , intent(  out), dimension(n)  :: zeta ! solution for zeta (z/L)
@@ -222,9 +224,12 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
        d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
        ln_z_z0, ln_z_zt, ln_z_zq,                          &
        phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
-       zeta_0, zeta_t, zeta_q, df_m, df_t
+       zeta_0, zeta_t, zeta_q, df_m, df_t, df_q
 
-  logical, dimension(n) :: mask_1
+  logical, dimension(n) :: mask_1, mask_n
+
+  real, dimension(n) :: f_m1, f_t1, f_q1, df_m1, df_t1, df_q1
+  integer :: i
 
   ier = 0
 
@@ -251,13 +256,22 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
 
   iter_loop: do iter = 1, max_iter
 
-     where (mask_1 .and. abs(zeta).lt.zeta_min)
+     ! handle points in neutral or near-neutral condition. Note that with RSL the profile
+     ! is only logarithmic where zR == 0
+     mask_n = mask_1 .and. (abs(zeta)<zeta_min)
+
+     where (mask_n)
         zeta = 0.0
         f_m = ln_z_z0
         f_t = ln_z_zt
         f_q = ln_z_zq
-        mask_1 = .false.  ! don't do any more calculations at these pts
      end where
+     ! add roughness sublayer corrections
+     call most%add_rsl_integral_m(n, mask_n, z0, z, zR, zeta,f_m, ierr=ier)
+     call most%add_rsl_integral_t(n, mask_n, zt, z, zR, zeta,f_t, ierr=ier)
+     call most%add_rsl_integral_q(n, mask_n, zq, z, zR, zeta,f_q, ierr=ier)
+     ! do not do any more calculations at these points
+     where (mask_n) mask_1 = .false.
 
      zeta_0 = 0.0
      zeta_t = 0.0
@@ -274,13 +288,22 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
      call most%derivative_t(n, mask_1, zeta,   phi_t  , ier)
      call most%derivative_t(n, mask_1, zeta_t, phi_t_0, ier)
 
+     where (mask_1)
+        df_m  = (phi_m - phi_m_0)*rzeta
+        df_t  = (phi_t - phi_t_0)*rzeta
+     endwhere
+
      call most%integral_m(n, mask_1, zeta, zeta_0, ln_z_z0, f_m, ier)
      call most%integral_t(n, mask_1, zeta, zeta_t, ln_z_zt, f_t, ier)
      call most%integral_q(n, mask_1, zeta, zeta_q, ln_z_zq, f_q, ier)
 
+     call most%add_rsl_integral_m(n,mask_1,z0,z,zR,zeta,f_m, df_m, ierr=ier)
+     call most%add_rsl_integral_t(n,mask_1,zt,z,zR,zeta,f_t, df_t, ierr=ier)
+     ! we need the value of f_q to return to the calling subroutine, but it is not used
+     ! in the solver
+     call most%add_rsl_integral_q(n,mask_1,zq,z,zR,zeta,f_q,       ierr=ier)
+
      where (mask_1)
-        df_m  = (phi_m - phi_m_0)*rzeta
-        df_t  = (phi_t - phi_t_0)*rzeta
         rich_1 = zeta*f_t/(f_m*f_m)
         d_rich = rich_1*( rzeta +  df_t/f_t - 2.0 *df_m/f_m)
         correction = (rich - rich_1)/d_rich

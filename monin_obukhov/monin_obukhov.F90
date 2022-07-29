@@ -198,7 +198,7 @@ subroutine mo_drag_1d &
   integer, parameter :: max_iter = 20
   real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
-  real   , dimension(size(pt)) :: rich, zeta
+  real   , dimension(size(pt)) :: rich, zeta, zR
 
   if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
        'monin_obukhov_init has not been called', FATAL)
@@ -207,10 +207,11 @@ subroutine mo_drag_1d &
      if (count(avail) .eq. 0) return
   endif
   n = size(pt)
+  zR(:) = 0.0
   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
        & error, zeta_min, max_iter, small,                         &
        & drag_min_heat, drag_min_moist, drag_min_mom,              &
-       & n, pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t,         &
+       & n, pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t,         &
        & drag_q, u_star, b_star, rich, zeta, ier, avail)
 
 end subroutine mo_drag_1d
