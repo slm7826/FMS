@@ -224,12 +224,10 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
        d_rich, rich_1, correction, corr, z_z0, z_zt, z_zq, &
        ln_z_z0, ln_z_zt, ln_z_zq,                          &
        phi_m, phi_m_0, phi_t, phi_t_0, rzeta,              &
-       zeta_0, zeta_t, zeta_q, df_m, df_t, df_q
-
+       zeta_0, zeta_t, zeta_q, df_m, df_t, l_inv
   logical, dimension(n) :: mask_1, mask_n
 
-  real, dimension(n) :: f_m1, f_t1, f_q1, df_m1, df_t1, df_q1
-  integer :: i
+!   integer :: i
 
   ier = 0
 
@@ -267,9 +265,10 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
         f_q = ln_z_zq
      end where
      ! add roughness sublayer corrections
-     call most%add_rsl_integral_m(n, mask_n, z0, z, zR, zeta,f_m, ierr=ier)
-     call most%add_rsl_integral_t(n, mask_n, zt, z, zR, zeta,f_t, ierr=ier)
-     call most%add_rsl_integral_q(n, mask_n, zq, z, zR, zeta,f_q, ierr=ier)
+     where (mask_n) l_inv = zeta/z
+     call most%add_rsl_integral_m(n, mask_n, l_inv, z0, z, zR, f_m, ierr=ier)
+     call most%add_rsl_integral_t(n, mask_n, l_inv, zt, z, zR, f_t, ierr=ier)
+     call most%add_rsl_integral_q(n, mask_n, l_inv, zq, z, zR, f_q, ierr=ier)
      ! do not do any more calculations at these points
      where (mask_n) mask_1 = .false.
 
@@ -297,11 +296,13 @@ _PURE subroutine monin_obukhov_solve_zeta(most, error, zeta_min, max_iter, small
      call most%integral_t(n, mask_1, zeta, zeta_t, ln_z_zt, f_t, ier)
      call most%integral_q(n, mask_1, zeta, zeta_q, ln_z_zq, f_q, ier)
 
-     call most%add_rsl_integral_m(n,mask_1,z0,z,zR,zeta,f_m, df_m, ierr=ier)
-     call most%add_rsl_integral_t(n,mask_1,zt,z,zR,zeta,f_t, df_t, ierr=ier)
+     ! add roughness sublaye corrections
+     where (mask_1) l_inv = zeta/z
+     call most%add_rsl_integral_m(n, mask_1, l_inv, z0, z, zR, f_m, df_m, ierr=ier)
+     call most%add_rsl_integral_t(n, mask_1, l_inv, zt, z, zR, f_t, df_t, ierr=ier)
      ! we need the value of f_q to return to the calling subroutine, but it is not used
      ! in the solver
-     call most%add_rsl_integral_q(n,mask_1,zq,z,zR,zeta,f_q,       ierr=ier)
+     call most%add_rsl_integral_q(n, mask_1, l_inv, zq, z, zR, f_q,       ierr=ier)
 
      where (mask_1)
         rich_1 = zeta*f_t/(f_m*f_m)
