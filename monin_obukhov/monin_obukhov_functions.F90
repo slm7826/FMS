@@ -27,6 +27,7 @@ contains
   procedure(most_stable_mix),          deferred :: stable_mix
 
   ! procedures related to roughness sublayer (RSL)
+  procedure :: set_rsl_functions   ! assign RSL functions and possibly do preliminary calculations (e.g. tabulate additive part of RSL integrals)
   procedure :: add_rsl_integral_m => add_rsl_integral_m ! add RSL integral stability term -- and optionally its derivative -- for momentum
   procedure :: add_rsl_integral_t => add_rsl_integral_t ! add RSL integral stability term -- and optionally its derivative -- for heat
   procedure :: add_rsl_integral_q => add_rsl_integral_t ! add RSL integral stability term -- and optionally its derivative -- for tracers

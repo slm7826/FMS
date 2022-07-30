@@ -4,7 +4,7 @@ implicit none
 private
 
 public :: rsl_functions_T
-public :: make_rsl_ridder2010_functions, make_rsl_ghannam2022_functions
+public :: make_ridder2010_rsl_functions, make_ghannam2022_rsl_functions
 
 ! representation of Roughness SubLayer (RSL) corrections
 ! - RSL formulation should be independent from MOST formulation -- that is, we should
@@ -54,14 +54,14 @@ real, parameter :: RSL_RTOL        = 1e-8           ! relative tolerance for RSL
 contains
 
 ! ---- Ridder (2010) RSL correction
-function make_rsl_ridder2010_functions(mu_m,mu_t) result(ptr)
+function make_ridder2010_rsl_functions(mu_m,mu_t) result(ptr)
   class(ridder2010_rsl_functions_T), pointer :: ptr
   real, intent(in) :: mu_m, mu_t ! parameters or RSL correction for momentum and heat respectively
 
   allocate(ptr)
   ptr%mu_m = mu_m
   ptr%mu_t = mu_t
-end function make_rsl_ridder2010_functions
+end function make_ridder2010_rsl_functions
 
 elemental real function ridder2010_rsl_m(this, zeta_r)
    class(ridder2010_rsl_functions_T), intent(in)   :: this
@@ -76,7 +76,7 @@ elemental real function ridder2010_rsl_t(this, zeta_r)
 end function ridder2010_rsl_t
 
 ! ---- Ghannam (2022) RSL corrections
-function make_rsl_ghannam2022_functions(mu_1, mu_m, mu_t) result(ptr)
+function make_ghannam2022_rsl_functions(mu_1, mu_m, mu_t) result(ptr)
   class(ghannam2022_rsl_functions_T), pointer :: ptr
   real, intent(in) :: mu_1, mu_m, mu_t ! parameters or RSL correction for momentum and heat respectively
 
@@ -84,7 +84,7 @@ function make_rsl_ghannam2022_functions(mu_1, mu_m, mu_t) result(ptr)
   ptr%mu_1 = mu_1
   ptr%mu_m = mu_m
   ptr%mu_t = mu_t
-end function make_rsl_ghannam2022_functions
+end function make_ghannam2022_rsl_functions
 
 elemental real function ghannam2022_rsl_m(this, zeta_r)
    class(ghannam2022_rsl_functions_T), intent(in)   :: this

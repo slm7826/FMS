@@ -42,6 +42,8 @@ use fms_mod,       only: error_mesg, FATAL, file_exist,   &
 use monin_obukhov_functions_mod, only: most_functions_T, &
                          make_most1_functions, make_most2_functions, &
                          make_brutsaert_functions, make_neutral_functions
+use rsl_functions_mod, only: rsl_functions_T, &
+                         make_ridder2010_rsl_functions, make_ghannam2022_rsl_functions
 use monin_obukhov_kernel, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
                          monin_obukhov_solve_zeta, monin_obukhov_profile_1d
 
@@ -92,11 +94,16 @@ real    :: drag_min_moist = 1.e-05
 real    :: drag_min_mom   = 1.e-05
 character(32) :: stable_option  = '1'
 real    :: zeta_trans     = 0.5
-logical :: new_mo_option  = .false.
 
-namelist /monin_obukhov_nml/ rich_crit, drag_min_heat, &
-                             drag_min_moist, drag_min_mom,      &
-                             stable_option, zeta_trans, new_mo_option !miz
+character(32) :: rsl_option = 'none'
+real    :: rsl_mu_1 = 0.67 ! parameter of RSL correction
+real    :: rsl_mu_m = 2.59 ! parameter of RSL momentum correction
+real    :: rsl_mu_t = 0.95 ! parameter of RSL heat and tracer correction
+
+namelist /monin_obukhov_nml/ rich_crit, drag_min_heat, drag_min_moist, drag_min_mom, &
+                             stable_option, zeta_trans, & !miz
+                             rsl_option, rsl_mu_1, rsl_mu_m, rsl_mu_t
+
 
 !=======================================================================
 !  MODULE VARIABLES
@@ -112,6 +119,8 @@ contains
 subroutine monin_obukhov_init
 
 integer :: unit, ierr, io, logunit
+class(rsl_functions_T),  pointer :: rsl => NULL()  ! pointer to roughness sublayer (RSL)
+                   ! correction functions
 
 !------------------- read namelist input -------------------------------
 
@@ -173,6 +182,21 @@ case default
         'stable_option = "'//trim(stable_option)//'" is incorrect, use "1", "2", "brutsaert", or "neutral"', FATAL)
 end select
 
+! set up roughness sublayer (RSL) corrections
+select case(trim(rsl_option))
+case('none')
+   rsl=>NULL()
+case('ridder2010')
+   rsl=>make_ridder2010_rsl_functions(rsl_mu_m,rsl_mu_t)
+case('ghannam2022')
+   rsl=>make_ghannam2022_rsl_functions(rsl_mu_1,rsl_mu_m,rsl_mu_t)
+case default
+   call error_mesg( &
+      'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
+      'rsl_option = "'//trim(rsl_option)//'" is incorrect, use "none", "ghannam2022", or "ridder2010"', FATAL)
+end select
+call most%set_rsl_functions(rsl)
+
 module_is_initialized = .true.
 
 end subroutine monin_obukhov_init
@@ -187,9 +211,10 @@ end subroutine monin_obukhov_end
 
 !=======================================================================
 subroutine mo_drag_1d &
-         (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, &
+         (pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t, drag_q, &
           u_star, b_star, avail)
   real, intent(in)   , dimension(:) :: pt, pt0, z, z0, zt, zq, speed
+  real, intent(in)   , dimension(:) :: zR ! roughness sublayer scale
   real, intent(inout), dimension(:) :: drag_m, drag_t, drag_q, u_star, b_star
   logical, intent(in), optional, dimension(:) :: avail
 
@@ -198,7 +223,7 @@ subroutine mo_drag_1d &
   integer, parameter :: max_iter = 20
   real   , parameter :: error=1.e-04, zeta_min=1.e-06, small=1.e-04
 
-  real   , dimension(size(pt)) :: rich, zeta, zR
+  real   , dimension(size(pt)) :: rich, zeta
 
   if(.not.module_is_initialized) call error_mesg('mo_drag_1d in monin_obukhov_mod', &
        'monin_obukhov_init has not been called', FATAL)
@@ -207,7 +232,6 @@ subroutine mo_drag_1d &
      if (count(avail) .eq. 0) return
   endif
   n = size(pt)
-  zR(:) = 0.0
   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
        & error, zeta_min, max_iter, small,                         &
        & drag_min_heat, drag_min_moist, drag_min_mom,              &
@@ -284,16 +308,16 @@ end subroutine mo_diff_2d_n
 !
 !=======================================================================
 subroutine mo_drag_2d &
-    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
+    (pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t, drag_q, u_star, b_star)
 
-real, intent(in)   , dimension(:,:) :: z, speed, pt, pt0, z0, zt, zq
+real, intent(in)   , dimension(:,:) :: z, speed, pt, pt0, z0, zt, zq, zR
 real, intent(out)  , dimension(:,:) :: drag_m, drag_t, drag_q
 real, intent(inout), dimension(:,:) :: u_star, b_star
 
 integer :: j
 
 do j = 1, size(pt,2)
-  call mo_drag_1d (pt(:,j), pt0(:,j), z(:,j), z0(:,j), zt(:,j), zq(:,j), &
+  call mo_drag_1d (pt(:,j), pt0(:,j), z(:,j), z0(:,j), zt(:,j), zq(:,j), zR(:,j),&
                    speed(:,j), drag_m(:,j), drag_t(:,j), drag_q(:,j), &
                    u_star(:,j), b_star(:,j))
 end do
@@ -302,12 +326,12 @@ end subroutine mo_drag_2d
 
 !=======================================================================
 subroutine mo_drag_0d &
-    (pt, pt0, z, z0, zt, zq, speed, drag_m, drag_t, drag_q, u_star, b_star)
+    (pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t, drag_q, u_star, b_star)
 
-real, intent(in)    :: z, speed, pt, pt0, z0, zt, zq
+real, intent(in)    :: z, speed, pt, pt0, z0, zt, zq, zR
 real, intent(out)   :: drag_m, drag_t, drag_q, u_star, b_star
 
-real, dimension(1) :: pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, speed_1, &
+real, dimension(1) :: pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, zR_1, speed_1, &
                       drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1
 
 pt_1   (1) = pt
@@ -316,9 +340,10 @@ z_1    (1) = z
 z0_1   (1) = z0
 zt_1   (1) = zt
 zq_1   (1) = zq
+zR_1   (1) = zR
 speed_1(1) = speed
 
-call mo_drag_1d (pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, speed_1, &
+call mo_drag_1d (pt_1, pt0_1, z_1, z0_1, zt_1, zq_1, zR_1, speed_1, &
                  drag_m_1, drag_t_1, drag_q_1, u_star_1, b_star_1)
 
 drag_m = drag_m_1(1)
