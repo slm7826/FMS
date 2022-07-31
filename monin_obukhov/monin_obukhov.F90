@@ -241,10 +241,11 @@ subroutine mo_drag_1d &
 end subroutine mo_drag_1d
 
 !=======================================================================
-subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
   real,    intent(in)                :: zref, zref_t
   real,    intent(in) , dimension(:) :: z, z0, zt, zq, u_star, b_star, q_star
+  real,    intent(in) , dimension(:) :: zR ! roughness sublayer length scale
   real,    intent(out), dimension(:) :: del_m, del_t, del_q
   logical, intent(in) , optional, dimension(:) :: avail
 
@@ -258,7 +259,7 @@ subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
   endif
   n = size(z)
   call monin_obukhov_profile_1d(most, vonkarm, &
-       & n, zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+       & n, zref, zref_t, z, z0, zt, zq, zR, u_star, b_star, q_star, &
        & del_m, del_t, del_q, ier, avail)
 
 end subroutine mo_profile_1d
@@ -355,44 +356,47 @@ b_star = b_star_1(1)
 end subroutine mo_drag_0d
 
 !=======================================================================
-subroutine mo_profile_2d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_2d(zref, zref_t, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_h, del_q)
 
 real, intent(in)                  :: zref, zref_t
 real, intent(in) , dimension(:,:) :: z, z0, zt, zq, u_star, b_star, q_star
+real, intent(in) , dimension(:,:) :: zR ! roughness sublayer length scale
 real, intent(out), dimension(:,:) :: del_m, del_h, del_q
 
 integer :: j
 
 do j = 1, size(z,2)
   call mo_profile_1d (zref, zref_t, z(:,j), z0(:,j), zt(:,j),         &
-                      zq(:,j), u_star(:,j), b_star(:,j), q_star(:,j), &
+                      zq(:,j), zR(:,j), u_star(:,j), b_star(:,j), q_star(:,j), &
                       del_m(:,j), del_h (:,j), del_q (:,j))
 enddo
 
 end subroutine mo_profile_2d
 
 !=======================================================================
-subroutine mo_profile_0d(zref, zref_t, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_0d(zref, zref_t, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_h, del_q)
 
 real, intent(in)  :: zref, zref_t
 real, intent(in)  :: z, z0, zt, zq, u_star, b_star, q_star
+real, intent(in)  :: zR ! roughness sublayer length scale
 real, intent(out) :: del_m, del_h, del_q
 
-real, dimension(1) :: z_1, z0_1, zt_1, zq_1, u_star_1, b_star_1, q_star_1, &
+real, dimension(1) :: z_1, z0_1, zt_1, zq_1, zR_1, u_star_1, b_star_1, q_star_1, &
                       del_m_1, del_h_1, del_q_1
 
 z_1     (1) = z
 z0_1    (1) = z0
 zt_1    (1) = zt
 zq_1    (1) = zq
+zR_1    (1) = zR
 u_star_1(1) = u_star
 b_star_1(1) = b_star
 q_star_1(1) = q_star
 
-call mo_profile_1d (zref, zref_t, z_1, z0_1, zt_1, zq_1, &
-                    u_star_1, b_star_1, q_star_1,        &
+call mo_profile_1d (zref, zref_t, z_1, z0_1, zt_1, zq_1, zR_1, &
+                    u_star_1, b_star_1, q_star_1,              &
                     del_m_1, del_h_1, del_q_1)
 
 del_m = del_m_1(1)
@@ -402,50 +406,53 @@ del_q = del_q_1(1)
 end subroutine mo_profile_0d
 
 !=======================================================================
-subroutine mo_profile_1d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_1d_n(zref, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_t, del_q, avail)
   real,    intent(in),  dimension(:)   :: zref
   real,    intent(in) , dimension(:)   :: z, z0, zt, zq, u_star, b_star, q_star
+  real,    intent(in) , dimension(:)   :: zR ! roughness sublayer length scale
   real,    intent(out), dimension(:,:) :: del_m, del_t, del_q
   logical, intent(in) , optional, dimension(:) :: avail
 
   integer :: k
 
   do k = 1, size(zref(:))
-     call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, &
+     call mo_profile_1d (zref(k), zref(k), z, z0, zt, zq, zR, &
         u_star, b_star, q_star, del_m(:,k), del_t(:,k), del_q(:,k), avail)
   enddo
 end subroutine mo_profile_1d_n
 
 !=======================================================================
-subroutine mo_profile_0d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_0d_n(zref, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_t, del_q)
 
 real,    intent(in),  dimension(:) :: zref
 real,    intent(in)                :: z, z0, zt, zq, u_star, b_star, q_star
+real,    intent(in)                :: zR ! roughness sublayer length scale
 real,    intent(out), dimension(:) :: del_m, del_t, del_q
 
 integer :: k
 
 do k = 1, size(zref(:))
-  call mo_profile_0d (zref(k), zref(k), z, z0, zt, zq, &
+  call mo_profile_0d (zref(k), zref(k), z, z0, zt, zq, zR, &
        u_star, b_star, q_star, del_m(k), del_t(k), del_q(k))
 enddo
 
 end subroutine mo_profile_0d_n
 
 !=======================================================================
-subroutine mo_profile_2d_n(zref, z, z0, zt, zq, u_star, b_star, q_star, &
+subroutine mo_profile_2d_n(zref, z, z0, zt, zq, zR, u_star, b_star, q_star, &
                          del_m, del_t, del_q)
 
 real,    intent(in),  dimension(:)     :: zref
 real,    intent(in),  dimension(:,:)   :: z, z0, zt, zq, u_star, b_star, q_star
+real,    intent(in) , dimension(:,:)   :: zR ! roughness sublayer length scale
 real,    intent(out), dimension(:,:,:) :: del_m, del_t, del_q
 
 integer :: k
 
 do k = 1, size(zref(:))
-  call mo_profile_2d (zref(k), zref(k), z, z0, zt, zq, &
+  call mo_profile_2d (zref(k), zref(k), z, z0, zt, zq, zR, &
        u_star, b_star, q_star, del_m(:,:,k), del_t(:,:,k), del_q(:,:,k))
 enddo
 
