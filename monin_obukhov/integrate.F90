@@ -3,6 +3,8 @@
 
 module integrate_mod
 
+#define _PURE
+
 use, intrinsic :: ieee_arithmetic
 
 implicit none
@@ -19,10 +21,10 @@ public :: integrate_romberg_midpoint_exp
 
 
 abstract interface
-   pure real function integrand(x)
+   _PURE real function integrand(x)
       real, intent(in) :: x
    end function integrand
-   pure subroutine refiner(f,a,b,s,n)
+   _PURE subroutine refiner(f,a,b,s,n)
       import :: integrand
       procedure(integrand)   :: f   ! function to integrate
       real   , intent(in)    :: a,b ! limits of integration
@@ -50,7 +52,7 @@ contains ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 !! points.
 !!
 !! Note that this requires that the function is defined at the boundaries iof interval [a,b]
-pure subroutine refine_trapezoid(f,a,b,s,n)
+_PURE subroutine refine_trapezoid(f,a,b,s,n)
   procedure(integrand)   :: f   !< function to integrate
   real   , intent(in)    :: a   !< lower limit of integration
   real   , intent(in)    :: b   !< upper limit of integration
@@ -85,7 +87,7 @@ end subroutine refine_trapezoid
 !!
 !! Consecutive calls to `refine_midpoint` will improve accuracy by adding 3**(n-2) interior
 !! points.
-pure subroutine refine_midpoint(f,a,b,s,n)
+_PURE subroutine refine_midpoint(f,a,b,s,n)
   procedure(integrand)   :: f   !< function to integrate
   real   , intent(in)    :: a   !< lower limit of integration
   real   , intent(in)    :: b   !< upper limit of integration
@@ -123,7 +125,7 @@ end subroutine refine_midpoint
 !!
 !! Consecutive calls to `refine_midpoint_inv` will improve accuracy by adding 3**(n-2) interior
 !! points.
-pure subroutine refine_midpoint_inv(ff,aa,bb,s,n)
+_PURE subroutine refine_midpoint_inv(ff,aa,bb,s,n)
   procedure(integrand)   :: ff  !< function to integrate
   real   , intent(in)    :: aa  !< lower limit of integration
   real   , intent(in)    :: bb  !< upper limit of integration
@@ -155,7 +157,7 @@ pure subroutine refine_midpoint_inv(ff,aa,bb,s,n)
 !   write(*,*)'refine_midpoint_inv: n=',n,'s=',s
 contains
   ! This function effects the change of variable.
-  pure real function f(x)
+  _PURE real function f(x)
      real, intent(in) :: x
      f = ff(1.0/x)/x**2
   end function f
@@ -172,7 +174,7 @@ end subroutine refine_midpoint_inv
 !!
 !! Consecutive calls to `refine_midpoint_exp` will improve accuracy by adding 3**(n-2) interior
 !! points.
-pure subroutine refine_midpoint_exp(ff,aa,bb,s,n)
+_PURE subroutine refine_midpoint_exp(ff,aa,bb,s,n)
   procedure(integrand)   :: ff  !< function to integrate
   real   , intent(in)    :: aa  !< lower limit of integration
   real   , intent(in)    :: bb  !< upper limit of integration
@@ -201,7 +203,7 @@ pure subroutine refine_midpoint_exp(ff,aa,bb,s,n)
   endif
 contains
   ! This function effects the change of variable.
-  pure real function f(x)
+  _PURE real function f(x)
      real, intent(in) :: x
      f = ff(-log(x))/x
   end function f
@@ -375,7 +377,7 @@ end subroutine integrate_romberg_trapezoid
 
 ! ---------------------------------------------------------------------------------------
 !> Calculate integral of a given function using Romberg procedure with midpoint integration rule
-pure subroutine integrate_romberg3(f, a, b, refine, rtol, ss, ierr, maxD, nDeg, nSteps)
+_PURE subroutine integrate_romberg3(f, a, b, refine, rtol, ss, ierr, maxD, nDeg, nSteps)
   procedure(integrand)   :: f       !< function to integrate
   real   , intent(in)    :: a       !< lower limit of integration
   real   , intent(in)    :: b       !< upper limit of integration
@@ -422,7 +424,7 @@ end subroutine integrate_romberg3
 
 ! ---------------------------------------------------------------------------------------
 !> Calculate integral of a given function using Romberg procedure with midpoint integration rule
-pure subroutine integrate_romberg_midpoint(f, a, b, rtol, s, ierr, maxD, nDeg, nSteps)
+_PURE subroutine integrate_romberg_midpoint(f, a, b, rtol, s, ierr, maxD, nDeg, nSteps)
   procedure(integrand)   :: f    !< function to integrate
   real   , intent(in)    :: a    !< lower limit of integration
   real   , intent(in)    :: b    !< upper limit of integration
@@ -439,7 +441,7 @@ end subroutine integrate_romberg_midpoint
 
 ! ---------------------------------------------------------------------------------------
 !> Calculate integral of a given function using Romberg procedure with midpoint integration rule
-pure subroutine integrate_romberg_midpoint_inv(f, a, b, rtol, s, ierr, maxD, nDeg, nSteps)
+_PURE subroutine integrate_romberg_midpoint_inv(f, a, b, rtol, s, ierr, maxD, nDeg, nSteps)
   procedure(integrand)   :: f    !< function to integrate
   real   , intent(in)    :: a    !< lower limit of integration
   real   , intent(in)    :: b    !< upper limit of integration
@@ -477,7 +479,7 @@ end subroutine integrate_romberg_midpoint_exp
 !! Given arrays xa and ya, each of length n, and given a value x, this routine returns
 !! a value y, and an error estimate dy. If P (x) is the polynomial of degree N − 1 such
 !! that P(xa(i)) = ya(i),i = 1,...,n, then the returned value y = P(x)
-pure subroutine polint(xa,ya,n,x,y,dy)
+_PURE subroutine polint(xa,ya,n,x,y,dy)
   real,    intent(in)  :: xa(:) !< array of x-coordinates
   real,    intent(in)  :: ya(:) !< array of y-coordinates
   integer, intent(in)  :: n     !< size of points in the arrays, degree of interpolation
