@@ -1,5 +1,7 @@
 module rsl_functions_mod
 
+#define _ELEMENTAL
+
 implicit none
 private
 
@@ -21,7 +23,7 @@ contains
 end type rsl_functions_T
 
 abstract interface
-  elemental real function most_rsl_function(this, zeta_r)
+  _ELEMENTAL real function most_rsl_function(this, zeta_r)
      import :: rsl_functions_T
      class(rsl_functions_T), intent(in) :: this
      real   , intent(in)  :: zeta_r  ! z/z_R, ratio of height to roughness sublayer height
@@ -63,13 +65,13 @@ function make_ridder2010_rsl_functions(mu_m,mu_t) result(ptr)
   ptr%mu_t = mu_t
 end function make_ridder2010_rsl_functions
 
-elemental real function ridder2010_rsl_m(this, zeta_r)
+_ELEMENTAL real function ridder2010_rsl_m(this, zeta_r)
    class(ridder2010_rsl_functions_T), intent(in)   :: this
    real, intent(in   )  :: zeta_r
    ridder2010_rsl_m = 1.0 - exp(-this%mu_m*zeta_r)
 end function ridder2010_rsl_m
 
-elemental real function ridder2010_rsl_t(this, zeta_r)
+_ELEMENTAL real function ridder2010_rsl_t(this, zeta_r)
    class(ridder2010_rsl_functions_T), intent(in)   :: this
    real, intent(in   )  :: zeta_r
    ridder2010_rsl_t = 1.0 - exp(-this%mu_t*zeta_r)
@@ -86,13 +88,13 @@ function make_ghannam2022_rsl_functions(mu_1, mu_m, mu_t) result(ptr)
   ptr%mu_t = mu_t
 end function make_ghannam2022_rsl_functions
 
-elemental real function ghannam2022_rsl_m(this, zeta_r)
+_ELEMENTAL real function ghannam2022_rsl_m(this, zeta_r)
    class(ghannam2022_rsl_functions_T), intent(in)   :: this
    real   , intent(in   )  :: zeta_r
    ghannam2022_rsl_m = 1.0 - this%mu_1 * exp(-this%mu_m*zeta_r)
 end function ghannam2022_rsl_m
 
-elemental real function ghannam2022_rsl_t(this, zeta_r)
+_ELEMENTAL real function ghannam2022_rsl_t(this, zeta_r)
    class(ghannam2022_rsl_functions_T), intent(in)   :: this
    real   , intent(in   )  :: zeta_r
    ghannam2022_rsl_t = 1.0 - this%mu_1 * exp(-this%mu_t*zeta_r)
