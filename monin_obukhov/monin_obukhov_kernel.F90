@@ -25,7 +25,9 @@
 !==============================================================================
 
 module monin_obukhov_kernel
-#include <fms_platform.h>
+
+#define _PURE
+!#include <fms_platform.h>
 
 use monin_obukhov_functions_mod, only: most_functions_T
 
