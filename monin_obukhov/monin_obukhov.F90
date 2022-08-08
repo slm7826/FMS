@@ -35,7 +35,7 @@ module monin_obukhov_mod
 
 use constants_mod, only: grav, vonkarm
 use mpp_mod,       only: input_nml_file
-use fms_mod,       only: error_mesg, FATAL, file_exist,   &
+use fms_mod,       only: error_mesg, FATAL, NOTE, file_exist,   &
                          check_nml_error, open_namelist_file,      &
                          mpp_pe, mpp_root_pe, close_file, stdlog, &
                          write_version_number, lowercase
@@ -92,7 +92,7 @@ real    :: rich_crit      = 2.0
 real    :: drag_min_heat  = 1.e-05
 real    :: drag_min_moist = 1.e-05
 real    :: drag_min_mom   = 1.e-05
-character(32) :: stable_option  = '1'
+character(32) :: stable_option  = '1' ! valid options: "1", "2", "brutsaert", or "neutral"
 real    :: zeta_trans     = 0.5
 
 character(32) :: rsl_option = 'none'
@@ -100,17 +100,21 @@ real    :: rsl_mu_1 = 0.67 ! parameter of RSL correction
 real    :: rsl_mu_m = 2.59 ! parameter of RSL momentum correction
 real    :: rsl_mu_t = 0.95 ! parameter of RSL heat and tracer correction
 ! parameters of RSL integrals Im and It lookup tables
-real    :: a_min    = 0.01  !> lower lookup table limit for parameter a of I_m and I_h RSL integrals: a_min > 0.
-real    :: a_max    = 10    !> upper lookup table limit for parameter a of I_m and I_h RSL integrals: a_max > a_min > 0.
-integer :: a_nsteps = 100   !> number of lookup table steps along the axis a.
-real    :: b_min    = -10.0 !> lower lookup table limit for parameter b of I_m and I_h RSL integrals.
-real    :: b_max    =  10.0 !> upper lookup table limit for parameter b of I_m and I_h RSL integrals
-integer :: b_nsteps = 100   !> number of lookup table steps along the axis b.
+logical :: use_RSL_lookup = .TRUE. !> use loookup tables to compute RSL integrals; otherwise
+                              !! calculate integrals directly: this can be used for, say,
+                              !! testing of quality of lookup in a single point runs, but would
+                              !! very likely be prohibitively slow in global simulations
+real    :: a_min    = 1e-5    !> lower lookup table limit for parameter a of I_m and I_h RSL integrals: a_min > 0.
+real    :: a_max    = 100     !> upper lookup table limit for parameter a of I_m and I_h RSL integrals: a_max > a_min > 0.
+integer :: a_nsteps = 100     !> number of lookup table steps along the axis a.
+real    :: b_min    = -10.0   !> lower lookup table limit for parameter b of I_m and I_h RSL integrals.
+real    :: b_max    =  1000.0 !> upper lookup table limit for parameter b of I_m and I_h RSL integrals
+integer :: b_nsteps = 100     !> number of lookup table steps along the axis b.
 
 namelist /monin_obukhov_nml/ rich_crit, drag_min_heat, drag_min_moist, drag_min_mom, &
                              stable_option, zeta_trans, & !miz
                              rsl_option, rsl_mu_1, rsl_mu_m, rsl_mu_t, &
-                             a_min, a_max, a_nsteps, b_min, b_max, b_nsteps
+                             use_RSL_lookup, a_min, a_max, a_nsteps, b_min, b_max, b_nsteps
 
 
 !=======================================================================
@@ -203,7 +207,10 @@ case default
       'MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', &
       'rsl_option = "'//trim(rsl_option)//'" is incorrect, use "none", "ghannam2022", or "ridder2010"', FATAL)
 end select
-call most%set_rsl_functions(rsl,a_min,a_max,a_nsteps,b_min,b_max,b_nsteps)
+
+call error_mesg('MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', 'Will set up RSL functions', NOTE)
+call most%set_rsl_functions(rsl,use_RSL_lookup,a_min,a_max,a_nsteps,b_min,b_max,b_nsteps)
+call error_mesg('MONIN_OBUKHOV_INIT in MONIN_OBUKHOV_MOD', 'Did set up RSL functions', NOTE)
 
 module_is_initialized = .true.
 

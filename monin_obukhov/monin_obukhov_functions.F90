@@ -1,5 +1,7 @@
 module monin_obukhov_functions_mod
-#include <fms_platform.h>
+
+#define _PURE
+!#include <fms_platform.h>
 
 use, intrinsic :: ieee_arithmetic
 use integrate_mod, only : integrate_romberg_trapezoid, integrate_romberg_midpoint, integrate_romberg_midpoint_inv
@@ -19,6 +21,7 @@ type, abstract :: most_functions_T
                     ! and in some stability functions
   class(rsl_functions_T), pointer :: rsl => NULL () ! pointer to RSL functions
   ! lookup tables for RSL integrals Im and It
+  logical :: use_RSL_lookup = .TRUE.
   real, allocatable :: a(:)    ! coordinates along axis a
   real, allocatable :: b(:)    ! coordinates along axis b
   real, allocatable :: Im(:,:) ! values of integral Im
@@ -126,9 +129,13 @@ contains ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 !!
 !! given a pointer to RSL object, stores with the Monin-Obukhov stability correction
 !! functions, and calculates the look-up table for the RSL integrals
-subroutine set_rsl_functions(this,rsl, a_min, a_max, a_nsteps, b_min, b_max, b_nsteps)
+subroutine set_rsl_functions(this,rsl, use_RSL_lookup, a_min, a_max, a_nsteps, b_min, b_max, b_nsteps)
   class(most_functions_T), intent(inout) :: this
   class(rsl_functions_T),  pointer       :: rsl !> pointer to RSL function object
+  logical, intent(in) :: use_RSL_lookup !> use loookup tables to compute RSL integrals; otherwise
+                                   !! calculate integrals directly: this can be used for, say,
+                                   !! testing of quality of lookup in a single point runs, but would
+                                   !! very likely be prohibitively slow in global simulations
   real,    intent(in) :: a_min     !> lower lookup table limit for parameter a of I_m and I_h RSL integrals: a_min > 0.
   real,    intent(in) :: a_max     !> upper lookup table limit for parameter a of I_m and I_h RSL integrals: a_max > a_min > 0.
   integer, intent(in) :: a_nsteps  !> number of lookup table steps along the axis a.
@@ -143,39 +150,42 @@ subroutine set_rsl_functions(this,rsl, a_min, a_max, a_nsteps, b_min, b_max, b_n
   this%rsl => rsl
   if (.not.associated(this%rsl)) return ! don't do anything further
 
-  if (allocated(this%a))  deallocate(this%a)
-  if (allocated(this%b))  deallocate(this%b)
-  if (allocated(this%Im)) deallocate(this%Im)
-  if (allocated(this%It)) deallocate(this%It)
+  this%use_RSL_lookup = use_RSL_lookup
+  if (this%use_RSL_lookup) then
+     if (allocated(this%a))  deallocate(this%a)
+     if (allocated(this%b))  deallocate(this%b)
+     if (allocated(this%Im)) deallocate(this%Im)
+     if (allocated(this%It)) deallocate(this%It)
 
-  allocate(this%a(a_nsteps+1),             &
-           this%b(b_nsteps+1),             &
-           this%Im(a_nsteps+1,b_nsteps+1), &
-           this%It(a_nsteps+1,b_nsteps+1))
+     allocate(this%a(a_nsteps+1),             &
+              this%b(b_nsteps+1),             &
+              this%Im(a_nsteps+1,b_nsteps+1), &
+              this%It(a_nsteps+1,b_nsteps+1))
 
-  x0 = sqrt(a_min); x1 = sqrt(a_max)
-  ! sign (a, b) returns the absolute value of a times the sign of b
-  y0 = sign(sqrt(abs(b_min)),b_min); y1 = sign(sqrt(abs(b_max)),b_max)
+     x0 = sqrt(a_min); x1 = sqrt(a_max)
+     do i = 1,a_nsteps+1
+        x = x0+(x1-x0)/a_nsteps*(i-1)
+        this%a(i) = x**2
+     enddo
 
-  do i = 1,a_nsteps+1
-     x = x0+(x1-x0)/a_nsteps*(i-1)
-     this%a(i) = x**2
-  enddo
-  do j = 1,b_nsteps+1
-     y = y0+(y1-y0)/b_nsteps*(j-1)
-     this%b(j) = sign(y**2,y)
-  enddo
+     ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
+     y0 = sign(abs(b_min)**(1./3.),b_min); y1 = sign(abs(b_max)**(1./3.),b_max)
+     do j = 1,b_nsteps+1
+        y = y0+(y1-y0)/b_nsteps*(j-1)
+        this%b(j) = y**3
+     enddo
 
-  do i = 1,a_nsteps+1
-  do j = 1,b_nsteps+1
-     call RSL_integral_I_m(this,this%a(i),this%b(j),this%Im(i,j),ierr)
-     call RSL_integral_I_t(this,this%a(i),this%b(j),this%It(i,j),ierr)
-  enddo
-  enddo
-  write(*,*) 'a ='
-  write(*,'(10g14.5)')this%a
-  write(*,*) 'b ='
-  write(*,'(10g14.5)')this%b
+     do i = 1,a_nsteps+1
+     do j = 1,b_nsteps+1
+        call RSL_integral_I_m(this,this%a(i),this%b(j),this%Im(i,j),ierr)
+        call RSL_integral_I_t(this,this%a(i),this%b(j),this%It(i,j),ierr)
+     enddo
+     enddo
+!      write(*,*) 'a ='
+!      write(*,'(10g14.5)')this%a
+!      write(*,*) 'b ='
+!      write(*,'(10g14.5)')this%b
+  endif
 end subroutine set_rsl_functions
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -206,12 +216,19 @@ _PURE subroutine add_rsl_integral_m(this, n, mask, l_inv, z1, z2, zR, F, df, ier
       if (.not.mask(i))    cycle ! skip maske-out points
       if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
 
-!       call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i), R0, ierr)
-      call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%Im, R0, ierr)
+      if (this%use_RSL_lookup) then
+         call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%Im, R0, ierr)
+      else
+         call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i), R0, ierr)
+      endif
       if (present(F)) F(i) = F(i) - R0
       ! derivative of RSL correction w.r.t has to be calculated numerically
       if (present(df)) then
-         call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i)+delta_l_inv, R1, ierr)
+         if (this%use_RSL_lookup) then
+            call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i)+delta_l_inv, this%Im, R1, ierr)
+         else
+            call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i)+delta_l_inv, R1, ierr)
+         endif
          dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
       endif
    enddo
@@ -245,12 +262,19 @@ _PURE subroutine add_rsl_integral_t(this, n, mask, l_inv, z1, z2, zR, F, df, ier
       if (.not.mask(i))    cycle ! skip maske-out points
       if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
 
-!       call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i), R0, ierr)
-      call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%It, R0, ierr)
+      if (this%use_RSL_lookup) then
+         call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%It, R0, ierr)
+      else
+         call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i), R0, ierr)
+      endif
       if (present(F)) F(i) = F(i) - R0
       ! derivative of RSL correction w.r.t has to be calculated numerically
       if (present(df)) then
-         call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, R1, ierr)
+         if (this%use_RSL_lookup) then
+            call lookup_R_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, this%It, R1, ierr)
+         else
+            call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, R1, ierr)
+         endif
          dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
       endif
    enddo
@@ -293,34 +317,52 @@ _PURE subroutine lookup_I_rsl(most,a,b,table,s,ierr)
 
   s    = ieee_value( s, ieee_signaling_nan )
   ierr = 1
-  i = bisect(most%a,a) ; if (i<1.or.i>=size(most%a)) return
-  j = bisect(most%b,b) ; if (j<1.or.j>=size(most%b)) return
+  i = bisect(most%a,a)
+  if (i<1.or.i>=size(most%a)) then
+      ! bisect did not find appropriate interval for interpolation
+      ! write(*,*) 'a out of bounds :',a
+      return
+  endif
+  j = bisect(most%b,b,extrapolate_high=.TRUE.)
+  if (j<1.or.j>=size(most%b)) then
+      ! bisect did not find appropriate interval for interpolation
+      ! write(*,*) 'b out of bounds :',b
+      return
+  endif
 
   da = (a-most%a(i))/(most%a(i+1)-most%a(i))
-!   if (.not.(0.0<=da.and.da<=1.0)) then
-!      write(*,*)'da',da,i
-!   endif
   f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
   f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
 
   db = (b-most%b(j))/(most%b(j+1)-most%b(j))
-!   if (.not.(0.0<=db.and.db<=1.0)) then
-!      write(*,*)'db',db,j
-!   endif
   s  = f1*(1-db) + f2*db
   ierr = 0
 end subroutine lookup_I_rsl
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-_PURE integer function bisect(xx, x1)
+! Given an array xx(n) in ascending order, and coordinate x1, finds
+! the interval within xx that x1 belongs to, returning index i such that xx(i)<=x1<=xx(i+1)
+!
+! Normally this function returns -1 if the coordinate is out of range of the input array,
+! but optional parameters extrapolate_high and extrapolate_low allow to control that
+! behavior. If extrapolate_high is TRUE and x1 is higher than xx(n) [the upper boundary
+! of input array values, since it is assumed to be in ascending order] (n-1) is
+! returned. Similarly, if extrapolate_low is TRUE and the coordinate is less than the
+! lower boundary of xx, 1 is returned.
+_PURE integer function bisect(xx, x1, extrapolate_high, extrapolate_low)
   real, intent(in) :: xx(:) ! array of boundaries
   real, intent(in) :: x1    ! point to locate
+  logical, intent(in), optional :: extrapolate_high ! if TRUE, extrapolate at the high end
+  logical, intent(in), optional :: extrapolate_low  ! if TRUE, extrapolate at the low end
 
    ! ---- local vars
   real    :: x              ! duplicate of input value
   integer :: low, high, mid
   integer :: n              ! size of the input array
-  logical :: ascending      ! if true, the coordinates are in ascending order
+  logical :: extr_h, extr_l
+
+  extr_h = .FALSE.; if (present(extrapolate_high)) extr_h = extrapolate_high
+  extr_l = .FALSE.; if (present(extrapolate_low))  extr_l = extrapolate_low
 
   n = size(xx)
   x = x1
@@ -328,16 +370,19 @@ _PURE integer function bisect(xx, x1)
   ! find the coordinates
   if (x >= xx(1).and.x<=xx(n)) then
      low = 1; high = n
-     ascending = xx(n) > xx(1)
      do while (high-low > 1)
         mid = (low+high)/2
-        if (ascending.eqv.xx(mid) <= x) then
+        if (xx(mid) <= x) then
            low = mid
         else
            high = mid
         endif
      enddo
      bisect = low
+  else if (x>xx(n).and.extr_h) then
+     bisect = n-1
+  else if (x<xx(1).and.extr_l) then
+     bisect = 1
   else
      bisect = -1
   endif
