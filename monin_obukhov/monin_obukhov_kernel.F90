@@ -408,15 +408,15 @@ _PURE subroutine monin_obukhov_profile_1d(most, &
 
      ! add roughness sublayer corrections
      zref_n(:) = zref
-     call most%add_rsl_integral_m(n, mask, mo_length_inv, z0, z,      zR, f_m,     ierr=ier)
-     call most%add_rsl_integral_m(n, mask, mo_length_inv, z0, zref_n, zR, f_m_ref, ierr=ier)
+     call most%add_rsl_integral_m(n, mask, mo_length_inv, z0,     z, zR, f_m,     ierr=ier)
+     call most%add_rsl_integral_m(n, mask, mo_length_inv, zref_n, z, zR, f_m_ref, ierr=ier)
 
      zref_n(:) = zref_t
-     call most%add_rsl_integral_t(n, mask, mo_length_inv, zt, z,      zR, f_t,     ierr=ier)
-     call most%add_rsl_integral_t(n, mask, mo_length_inv, zt, zref_n, zR, f_t_ref, ierr=ier)
+     call most%add_rsl_integral_t(n, mask, mo_length_inv, zt,     z, zR, f_t,     ierr=ier)
+     call most%add_rsl_integral_t(n, mask, mo_length_inv, zref_n, z, zR, f_t_ref, ierr=ier)
 
-     call most%add_rsl_integral_q(n, mask, mo_length_inv, zq, z,      zR, f_q,     ierr=ier)
-     call most%add_rsl_integral_q(n, mask, mo_length_inv, zq, zref_n, zR, f_q_ref, ierr=ier)
+     call most%add_rsl_integral_q(n, mask, mo_length_inv, zq,     z, zR, f_q,     ierr=ier)
+     call most%add_rsl_integral_q(n, mask, mo_length_inv, zref_n, z, zR, f_q_ref, ierr=ier)
 
      where(mask)
         del_m = 1.0 - f_m_ref/f_m
