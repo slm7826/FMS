@@ -22,7 +22,7 @@ type, abstract :: most_functions_T
   class(rsl_functions_T), pointer :: rsl => NULL () ! pointer to RSL functions
   ! lookup tables for RSL integrals Im and It
   logical :: use_RSL_lookup = .TRUE.
-  real, allocatable :: a(:)    ! coordinates along axis a
+  real, allocatable :: a(:),loga(:) ! coordinates along axis a
   real, allocatable :: b(:)    ! coordinates along axis b
   real, allocatable :: Im(:,:) ! values of integral Im
   real, allocatable :: It(:,:) ! values of integral It
@@ -152,12 +152,14 @@ subroutine set_rsl_functions(this,rsl, use_RSL_lookup, a_min, a_max, a_nsteps, b
 
   this%use_RSL_lookup = use_RSL_lookup
   if (this%use_RSL_lookup) then
-     if (allocated(this%a))  deallocate(this%a)
-     if (allocated(this%b))  deallocate(this%b)
-     if (allocated(this%Im)) deallocate(this%Im)
-     if (allocated(this%It)) deallocate(this%It)
+     if (allocated(this%a))    deallocate(this%a)
+     if (allocated(this%loga)) deallocate(this%loga)
+     if (allocated(this%b))    deallocate(this%b)
+     if (allocated(this%Im))   deallocate(this%Im)
+     if (allocated(this%It))   deallocate(this%It)
 
      allocate(this%a(a_nsteps+1),             &
+              this%loga(a_nsteps+1),          &
               this%b(b_nsteps+1),             &
               this%Im(a_nsteps+1,b_nsteps+1), &
               this%It(a_nsteps+1,b_nsteps+1))
@@ -166,6 +168,7 @@ subroutine set_rsl_functions(this,rsl, use_RSL_lookup, a_min, a_max, a_nsteps, b
      do i = 1,a_nsteps+1
         x = x0+(x1-x0)/a_nsteps*(i-1)
         this%a(i) = x**2
+        this%loga(i) = log(this%a(i))
      enddo
 
      ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
@@ -268,7 +271,7 @@ _PURE subroutine add_rsl_integral_t(this, n, mask, l_inv, z1, z2, zR, F, df, ier
          call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i), R0, ierr)
       endif
       if (present(F)) F(i) = F(i) - R0
-      ! derivative of RSL correction w.r.t has to be calculated numerically
+      ! derivative of RSL correction w.r.t zeta = z2/L has to be calculated numerically
       if (present(df)) then
          if (this%use_RSL_lookup) then
             call lookup_R_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, this%It, R1, ierr)
@@ -320,17 +323,18 @@ _PURE subroutine lookup_I_rsl(most,a,b,table,s,ierr)
   i = bisect(most%a,a)
   if (i<1.or.i>=size(most%a)) then
       ! bisect did not find appropriate interval for interpolation
-      ! write(*,*) 'a out of bounds :',a
+      write(*,'(a,99(g15.6))') 'a out of bounds :: ',a,most%a(1),most%a(size(most%a))
       return
   endif
   j = bisect(most%b,b,extrapolate_high=.TRUE.)
   if (j<1.or.j>=size(most%b)) then
       ! bisect did not find appropriate interval for interpolation
-      ! write(*,*) 'b out of bounds :',b
+      write(*,'(a,99(g15.6))') 'b out of bounds :: ',b,most%b(1),most%b(size(most%b))
       return
   endif
 
-  da = (a-most%a(i))/(most%a(i+1)-most%a(i))
+!   da = (a-most%a(i))/(most%a(i+1)-most%a(i))
+  da = (log(a)-most%loga(i))/(most%loga(i+1)-most%loga(i))
   f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
   f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
 
