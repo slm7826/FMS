@@ -124,337 +124,6 @@ real, parameter :: &
 
 contains ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-!>/brief Set up roughness sublayer (RSL) parameterization
-!!
-!! given a pointer to RSL object, stores with the Monin-Obukhov stability correction
-!! functions, and calculates the look-up table for the RSL integrals
-subroutine set_rsl_functions(this,rsl, use_RSL_lookup, a_min, a_max, a_nsteps, b_min, b_max, b_nsteps)
-  class(most_functions_T), intent(inout) :: this
-  class(rsl_functions_T),  pointer       :: rsl !> pointer to RSL function object
-  logical, intent(in) :: use_RSL_lookup !> use loookup tables to compute RSL integrals; otherwise
-                                   !! calculate integrals directly: this can be used for, say,
-                                   !! testing of quality of lookup in a single point runs, but would
-                                   !! very likely be prohibitively slow in global simulations
-  real,    intent(in) :: a_min     !> lower lookup table limit for parameter a of I_m and I_h RSL integrals: a_min > 0.
-  real,    intent(in) :: a_max     !> upper lookup table limit for parameter a of I_m and I_h RSL integrals: a_max > a_min > 0.
-  integer, intent(in) :: a_nsteps  !> number of lookup table steps along the axis a.
-  real,    intent(in) :: b_min     !> lower lookup table limit for parameter b of I_m and I_h RSL integrals.
-  real,    intent(in) :: b_max     !> upper lookup table limit for parameter b of I_m and I_h RSL integrals
-  integer, intent(in) :: b_nsteps  !> number of lookup table steps along the axis b.
-
-  integer :: i,j
-  integer :: ierr
-  real    :: x0,x1,x, y0,y1,y
-
-  this%rsl => rsl
-  if (.not.associated(this%rsl)) return ! don't do anything further
-
-  this%use_RSL_lookup = use_RSL_lookup
-  if (this%use_RSL_lookup) then
-     if (allocated(this%a))    deallocate(this%a)
-     if (allocated(this%loga)) deallocate(this%loga)
-     if (allocated(this%b))    deallocate(this%b)
-     if (allocated(this%Im))   deallocate(this%Im)
-     if (allocated(this%It))   deallocate(this%It)
-
-     allocate(this%a(a_nsteps+1),             &
-              this%loga(a_nsteps+1),          &
-              this%b(b_nsteps+1),             &
-              this%Im(a_nsteps+1,b_nsteps+1), &
-              this%It(a_nsteps+1,b_nsteps+1))
-
-     x0 = sqrt(a_min); x1 = sqrt(a_max)
-     do i = 1,a_nsteps+1
-        x = x0+(x1-x0)/a_nsteps*(i-1)
-        this%a(i) = x**2
-        this%loga(i) = log(this%a(i))
-     enddo
-
-     ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
-     y0 = sign(abs(b_min)**(1./3.),b_min); y1 = sign(abs(b_max)**(1./3.),b_max)
-     do j = 1,b_nsteps+1
-        y = y0+(y1-y0)/b_nsteps*(j-1)
-        this%b(j) = y**3
-     enddo
-
-     do i = 1,a_nsteps+1
-     do j = 1,b_nsteps+1
-        call RSL_integral_I_m(this,this%a(i),this%b(j),this%Im(i,j),ierr)
-        call RSL_integral_I_t(this,this%a(i),this%b(j),this%It(i,j),ierr)
-     enddo
-     enddo
-!      write(*,*) 'a ='
-!      write(*,'(10g14.5)')this%a
-!      write(*,*) 'b ='
-!      write(*,'(10g14.5)')this%b
-  endif
-end subroutine set_rsl_functions
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-! add the value of integral stability function roughness sublayer correction for momentum
-_PURE subroutine add_rsl_integral_m(this, n, mask, l_inv, z1, z2, zR, F, df, ierr)
-   class(most_functions_T), intent(in) :: this
-   integer, intent(in)    :: n          ! size of the input/output arrays
-   logical, intent(in)    :: mask(n)    ! don't do calculations where this mask is FALSE
-   real,    intent(in)    :: l_inv(n)   ! 1/L, reciprocal of Monin-Obukhov length
-   real,    intent(in)    :: z1(n)      ! lower limit of the RSL integral, m
-   real,    intent(in)    :: z2(n)      ! upper limit of the RSL integral, m
-   real,    intent(in)    :: zR(n)      ! roughness sublayer length scale, m
-   ! the following inout arguments are updated (incremented) by this subroutine
-   real,    intent(inout), optional :: F (n) ! value of the integral function
-   real,    intent(inout), optional :: df(n) ! derivative of the integral function w.r.t. zeta
-                                        ! where zeta is assumed to be z2/L
-   integer, intent(out),   optional :: ierr  ! error code
-
-   real, parameter :: delta_l_inv = 0.01 ! small increment of 1/L for derivative calculation
-
-   integer :: i
-   real :: R0 ! value of RSL integral for given parameters
-   real :: R1 ! value of RSL integral with small zeta increment, for derivative calculations
-
-   if (.not.associated(this%rsl)) return ! don't do anything if ther is no RSL
-
-   do i = 1, n
-      if (.not.mask(i))    cycle ! skip maske-out points
-      if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
-
-      if (this%use_RSL_lookup) then
-         call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%Im, R0, ierr)
-      else
-         call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i), R0, ierr)
-      endif
-      if (present(F)) F(i) = F(i) - R0
-      ! derivative of RSL correction w.r.t has to be calculated numerically
-      if (present(df)) then
-         if (this%use_RSL_lookup) then
-            call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i)+delta_l_inv, this%Im, R1, ierr)
-         else
-            call integralR_m_rsl(this, z1(i),z2(i),zR(i), l_inv(i)+delta_l_inv, R1, ierr)
-         endif
-         dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
-      endif
-   enddo
-end subroutine add_rsl_integral_m
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-! add the value of integral stability function roughness sublayer correction for heat
-_PURE subroutine add_rsl_integral_t(this, n, mask, l_inv, z1, z2, zR, F, df, ierr)
-   class(most_functions_T), intent(in) :: this
-   integer, intent(in)    :: n          ! size of the input/output arrays
-   logical, intent(in)    :: mask(n)    ! don't do calculations where this mask is FALSE
-   real,    intent(in)    :: l_inv(n)   ! 1/L, reciprocal of Monin-Obukhov length
-   real,    intent(in)    :: z1(n)      ! lower limit of the RSL integral, m
-   real,    intent(in)    :: z2(n)      ! upper limit of the RSL integral, m
-   real,    intent(in)    :: zR(n)      ! roughness sublayer length scale, m
-   ! the following inout arguments are updated (incremented) by this subroutine
-   real,    intent(inout), optional :: F (n) ! value of the integral function
-   real,    intent(inout), optional :: df(n) ! derivative of the integral function w.r.t. zeta
-                                        ! where zeta is assumed to be z2/L
-   integer, intent(out),   optional :: ierr  ! error code
-
-   real, parameter :: delta_l_inv = 0.01 ! small increment of 1/L for derivative calculation
-
-   integer :: i
-   real :: R0 ! value of RSL integral for given parameters
-   real :: R1 ! value of RSL integral with small zeta increment, for derivative calculations
-
-   if (.not.associated(this%rsl)) return ! don't do anything if ther is no RSL
-
-   do i = 1, n
-      if (.not.mask(i))    cycle ! skip maske-out points
-      if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
-
-      if (this%use_RSL_lookup) then
-         call lookup_R_rsl(this, z1(i),z2(i),zR(i), l_inv(i), this%It, R0, ierr)
-      else
-         call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i), R0, ierr)
-      endif
-      if (present(F)) F(i) = F(i) - R0
-      ! derivative of RSL correction w.r.t zeta = z2/L has to be calculated numerically
-      if (present(df)) then
-         if (this%use_RSL_lookup) then
-            call lookup_R_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, this%It, R1, ierr)
-         else
-            call integralR_t_rsl(this, z1(i), z2(i), zR(i), l_inv(i)+delta_l_inv, R1, ierr)
-         endif
-         dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
-      endif
-   enddo
-end subroutine add_rsl_integral_t
-
-
-_PURE subroutine lookup_R_rsl(most, z1, z2, z_rsl, l_inv, table, s, ierr)
-  class(most_functions_T), intent(in) :: most
-  real,    intent(in)  :: z1     !< lower limit of the integral R, m
-  real,    intent(in)  :: z2     !< upper limit of the integral R, m
-  real,    intent(in)  :: z_rsl  !< roughness sublayer length scale, m
-  real,    intent(in)  :: l_inv  !< reciprocal of Monin-Obukhov length, 1/m
-  real,    intent(in)  :: table(:,:) !< lookup table, Im or It
-  real,    intent(out) :: s      !< value of the integral
-  integer, intent(out) :: ierr   !< error code
-
-  real :: a1, a2, b, s1, s2
-  s  = ieee_value( s, ieee_signaling_nan )
-
-  a1 = z1/z_rsl
-  a2 = z2/z_rsl
-  b  = z_rsl*l_inv
-
-  call lookup_I_rsl(most,a1,b,table,s1,ierr); if (ierr.ne.0) return
-  call lookup_I_rsl(most,a2,b,table,s2,ierr); if (ierr.ne.0) return
-  s = s1 - s2
-end subroutine lookup_R_rsl
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-_PURE subroutine lookup_I_rsl(most,a,b,table,s,ierr)
-  class(most_functions_T), intent(in) :: most
-  real,    intent(in)  :: a      !< parameter of the integral, z_1/z_R
-  real,    intent(in)  :: b      !< parameter of the integral, z_R/L
-  real,    intent(in)  :: table(:,:) !< lookup table, Im or It
-  real,    intent(out) :: s      !< value of the integral
-  integer, intent(out) :: ierr   !< error code, 0 = no error
-
-  integer :: i,j
-  real    :: da,db,f1,f2
-
-  s    = ieee_value( s, ieee_signaling_nan )
-  ierr = 1
-  i = bisect(most%a,a)
-  if (i<1.or.i>=size(most%a)) then
-      ! bisect did not find appropriate interval for interpolation
-      write(*,'(a,99(g15.6))') 'a out of bounds :: ',a,most%a(1),most%a(size(most%a))
-      return
-  endif
-  j = bisect(most%b,b,extrapolate_high=.TRUE.)
-  if (j<1.or.j>=size(most%b)) then
-      ! bisect did not find appropriate interval for interpolation
-      write(*,'(a,99(g15.6))') 'b out of bounds :: ',b,most%b(1),most%b(size(most%b))
-      return
-  endif
-
-!   da = (a-most%a(i))/(most%a(i+1)-most%a(i))
-  da = (log(a)-most%loga(i))/(most%loga(i+1)-most%loga(i))
-  f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
-  f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
-
-  db = (b-most%b(j))/(most%b(j+1)-most%b(j))
-  s  = f1*(1-db) + f2*db
-  ierr = 0
-end subroutine lookup_I_rsl
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-! Given an array xx(n) in ascending order, and coordinate x1, finds
-! the interval within xx that x1 belongs to, returning index i such that xx(i)<=x1<=xx(i+1)
-!
-! Normally this function returns -1 if the coordinate is out of range of the input array,
-! but optional parameters extrapolate_high and extrapolate_low allow to control that
-! behavior. If extrapolate_high is TRUE and x1 is higher than xx(n) [the upper boundary
-! of input array values, since it is assumed to be in ascending order] (n-1) is
-! returned. Similarly, if extrapolate_low is TRUE and the coordinate is less than the
-! lower boundary of xx, 1 is returned.
-_PURE integer function bisect(xx, x1, extrapolate_high, extrapolate_low)
-  real, intent(in) :: xx(:) ! array of boundaries
-  real, intent(in) :: x1    ! point to locate
-  logical, intent(in), optional :: extrapolate_high ! if TRUE, extrapolate at the high end
-  logical, intent(in), optional :: extrapolate_low  ! if TRUE, extrapolate at the low end
-
-   ! ---- local vars
-  real    :: x              ! duplicate of input value
-  integer :: low, high, mid
-  integer :: n              ! size of the input array
-  logical :: extr_h, extr_l
-
-  extr_h = .FALSE.; if (present(extrapolate_high)) extr_h = extrapolate_high
-  extr_l = .FALSE.; if (present(extrapolate_low))  extr_l = extrapolate_low
-
-  n = size(xx)
-  x = x1
-
-  ! find the coordinates
-  if (x >= xx(1).and.x<=xx(n)) then
-     low = 1; high = n
-     do while (high-low > 1)
-        mid = (low+high)/2
-        if (xx(mid) <= x) then
-           low = mid
-        else
-           high = mid
-        endif
-     enddo
-     bisect = low
-  else if (x>xx(n).and.extr_h) then
-     bisect = n-1
-  else if (x<xx(1).and.extr_l) then
-     bisect = 1
-  else
-     bisect = -1
-  endif
-end function bisect
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-_PURE subroutine integralR_m_rsl(most, z1, z2, z_rsl, l_inv, s, ierr)
-  class(most_functions_T), intent(in) :: most
-  real,    intent(in)  :: z1, z2 ! lower and upper limits of the integral, m
-  real,    intent(in)  :: z_rsl  ! roughness sublayer length scale, m
-  real,    intent(in)  :: l_inv  ! reciprocal of Monin-Obukhov length, 1/m
-  real,    intent(out) :: s      ! value of the integral
-  integer, intent(out) :: ierr   ! error code
-
-!   call integrate_romberg_trapezoid(f1 ,a,RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
-  call integrate_romberg_midpoint(f1,z1,z2,RSL_RTOL,s,ierr)
-
-contains
-  ! internal function that returns the integrand
-  _PURE real function f1(x)
-     real, intent(in) :: x
-
-     logical :: mask_1(1)
-     real    :: phi_1(1), l_inv_1(1)
-     real    :: rsl
-     integer :: ierr_ignored
-
-     ! calculate stability correction function
-     mask_1  = .TRUE.; l_inv_1 = l_inv
-     call most%derivative_m(1,mask_1,x*l_inv_1,phi_1,ierr_ignored)
-     ! calculate roughness sublayer correction function
-     rsl = most%rsl%rsl_m(x/z_rsl)
-     ! finally, function under the integral
-     f1 = phi_1(1)*(1-rsl)/x
-  end function f1
-end subroutine integralR_m_rsl
-
-! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-_PURE subroutine integralR_t_rsl(most,z1, z2, z_rsl, l_inv, s, ierr)
-  class(most_functions_T), intent(in) :: most
-  real,    intent(in)  :: z1, z2 ! lower and upper limits of the integral, m
-  real,    intent(in)  :: z_rsl  ! roughness sublayer length scale, m
-  real,    intent(in)  :: l_inv  ! reciprocal of Monin-Obukhov length, 1/m
-  real,    intent(out) :: s      ! value of the integral
-  integer, intent(out) :: ierr   ! error code
-
-!   call integrate_romberg_trapezoid(f1 ,a,RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
-  call integrate_romberg_midpoint(f1,z1,z2,RSL_RTOL,s,ierr)
-
-contains
-  ! internal function that returns the integrand
-  _PURE real function f1(x)
-     real, intent(in) :: x
-
-     logical :: mask_1(1)
-     real    :: phi_1(1), l_inv_1(1)
-     real    :: rsl
-     integer :: ierr_ignored
-
-     ! calculate stability correction function
-     mask_1  = .TRUE.; l_inv_1 = l_inv
-     call most%derivative_t(1,mask_1,x*l_inv_1,phi_1,ierr_ignored)
-     ! calculate roughness sublayer correction function
-     rsl = most%rsl%rsl_t(x/z_rsl)
-     ! finally, function under the integral
-     f1 = phi_1(1)*(1-rsl)/x
-  end function f1
-end subroutine integralR_t_rsl
 
 ! ==== neutral stability option =========================================================
 function make_neutral_functions(rich_crit) result(ptr)
@@ -1041,26 +710,92 @@ _PURE subroutine brutsaert_stable_mix(this, n, rich, mix, ier)
   ier = 1
 end subroutine brutsaert_stable_mix
 
+! =======================================================================================
+! procedures related to roughness sublayer treatment
+
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-!> \brief Calculate RSL integral I for momentum
+! Given an array xx(n) in ascending order, and coordinate x1, finds
+! the interval within xx that x1 belongs to, returning index i such that xx(i)<=x1<=xx(i+1)
+!
+! Normally this function returns -1 if the coordinate is out of range of the input array,
+! but optional parameters extrapolate_high and extrapolate_low allow to control that
+! behavior. If extrapolate_high is TRUE and x1 is higher than xx(n) [the upper boundary
+! of input array values, since it is assumed to be in ascending order] (n-1) is
+! returned. Similarly, if extrapolate_low is TRUE and the coordinate is less than the
+! lower boundary of xx, 1 is returned.
+_PURE integer function bisect(xx, x1, extrapolate_high, extrapolate_low)
+  real, intent(in) :: xx(:) ! array of boundaries
+  real, intent(in) :: x1    ! point to locate
+  logical, intent(in), optional :: extrapolate_high ! if TRUE, extrapolate at the high end
+  logical, intent(in), optional :: extrapolate_low  ! if TRUE, extrapolate at the low end
+
+   ! ---- local vars
+  real    :: x              ! duplicate of input value
+  integer :: low, high, mid
+  integer :: n              ! size of the input array
+  logical :: extr_h, extr_l
+
+  extr_h = .FALSE.; if (present(extrapolate_high)) extr_h = extrapolate_high
+  extr_l = .FALSE.; if (present(extrapolate_low))  extr_l = extrapolate_low
+
+  n = size(xx)
+  x = x1
+
+  ! find the coordinates
+  if (x >= xx(1).and.x<=xx(n)) then
+     low = 1; high = n
+     do while (high-low > 1)
+        mid = (low+high)/2
+        if (xx(mid) <= x) then
+           low = mid
+        else
+           high = mid
+        endif
+     enddo
+     bisect = low
+  else if (x>xx(n).and.extr_h) then
+     bisect = n-1
+  else if (x<xx(1).and.extr_l) then
+     bisect = 1
+  else
+     bisect = -1
+  endif
+end function bisect
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+!> \brief calculate integral R for momentum
 !!
-!! given parameters a = z_atm/z_RRL and b = z_R/L, calculates the RSL integral I_m
-!! for momentum
-!! I_m = \int_a^\infty \phi_m (b z) (1-phi_{RSL,m}(z))/z dz
-subroutine RSL_integral_I_m(most,a,b,s,ierr)
+!! given limits f integration a1 = z1/z_R, a2=z2/z_R and b = z_R/L, calculates RSL
+!! integral R_m for momentum
+!! R_m = \int_{a1}^{a2} \phi_m (b z) (1-phi_{RSL,m}(z))/z dz
+_PURE subroutine RSL_integral_R_m(most, a1, a2, b, s, ierr)
   class(most_functions_T), intent(in) :: most
-  real, intent(in)     :: a    !< parameter of the integral, z_1/z_R
+  real,    intent(in)  :: a1, a2 !< lower and upper limits of the integral, z1/z_R and z2/z_R
   real, intent(in)     :: b    !< parameter of the integral, z_R/L
-  real, intent(out)    :: s    !< value of the integral
-  integer, intent(out) :: ierr !< error code
+  real,    intent(out) :: s      ! value of the integral
+  integer, intent(out) :: ierr   ! error code
+
+  real, parameter :: A_MID = 1e-1
+  real :: s1
 
   if (.not.associated(most%rsl)) then
      s = 0.0; ierr = 0
      return
   endif
-  call integrate_romberg_midpoint_inv(f,a,RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
+
+  if (a2.ge.RSL_UPPER_LIMIT) then
+     ! very large upper limit: treat it as an integral to infinity
+     call integrate_romberg_midpoint_inv(f1,max(a1,A_MID),RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
+     if (a1<A_MID) then
+        call integrate_romberg_trapezoid(f1,a1,A_MID,RSL_RTOL,s1,ierr)
+        s = s+s1
+     endif
+  else
+     call integrate_romberg_trapezoid(f1,a1,a2,RSL_RTOL,s,ierr)
+  endif
 contains
-  _PURE real function f(x)
+  ! internal function that returns the function under integral
+  _PURE real function f1(x)
      real, intent(in) :: x
 
      real,    dimension(1) :: zeta,phi,rsl
@@ -1071,30 +806,44 @@ contains
      zeta = x*b
      call most%derivative_m(1,mask,zeta,phi,ierr_ignored)
      rsl = most%rsl%rsl_m(x)
-     f = phi(1)*(1-rsl(1))/x
-  end function f
-end subroutine RSL_integral_I_m
+     f1 = phi(1)*(1-rsl(1))/x
+  end function f1
+end subroutine RSL_integral_R_m
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-!> \brief Calculate RSL integral I for heat
+!> \brief calculate integral R for heat
 !!
-!! given parameters a = z_atm/z_RRL and b = z_R/L, calculates the RSL integral I_t
-!! for heat
-!! I_t = \int_a^\infty \phi_t (b z) (1-phi_{RSL,t}(z))/z dz
-subroutine RSL_integral_I_t(most,a,b,s,ierr)
+!! given limits f integration a1 = z1/z_R, a2=z2/z_R and b = z_R/L, calculates RSL
+!! integral R_m for momentum
+!! R_m = \int_{a1}^{a2} \phi_t (b z) (1-phi_{RSL,t}(z))/z dz
+_PURE subroutine RSL_integral_R_t(most, a1, a2, b, s, ierr)
   class(most_functions_T), intent(in) :: most
-  real, intent(in)     :: a    !< parameter of the integral, z_1/z_R
+  real,    intent(in)  :: a1, a2 !< lower and upper limits of the integral, z1/z_R and z2/z_R
   real, intent(in)     :: b    !< parameter of the integral, z_R/L
-  real, intent(out)    :: s    !< value of the integral
-  integer, intent(out) :: ierr !< error code
+  real,    intent(out) :: s      ! value of the integral
+  integer, intent(out) :: ierr   ! error code
+
+  real, parameter :: A_MID = 1e-1
+  real :: s1
 
   if (.not.associated(most%rsl)) then
      s = 0.0; ierr = 0
      return
   endif
-  call integrate_romberg_midpoint_inv(f,a,RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
+
+  if (a2.ge.RSL_UPPER_LIMIT) then
+     ! very large upper limit: treat it as an integral to infinity
+     call integrate_romberg_midpoint_inv(f1,max(a1,A_MID),RSL_UPPER_LIMIT,RSL_RTOL,s,ierr)
+     if (a1<A_MID) then
+        call integrate_romberg_trapezoid(f1,a1,A_MID,RSL_RTOL,s1,ierr)
+        s = s+s1
+     endif
+  else
+     call integrate_romberg_trapezoid(f1,a1,a2,RSL_RTOL,s,ierr)
+  endif
 contains
-  _PURE real function f(x)
+  ! internal function that returns the function under integral
+  _PURE real function f1(x)
      real, intent(in) :: x
 
      real,    dimension(1) :: zeta,phi,rsl
@@ -1105,8 +854,250 @@ contains
      zeta = x*b
      call most%derivative_t(1,mask,zeta,phi,ierr_ignored)
      rsl = most%rsl%rsl_t(x)
-     f = phi(1)*(1-rsl(1))/x
-  end function f
-end subroutine RSL_integral_I_t
+     f1 = phi(1)*(1-rsl(1))/x
+  end function f1
+end subroutine RSL_integral_R_t
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+!>/brief Set up roughness sublayer (RSL) parameterization
+!!
+!! given a pointer to RSL object, stores with the Monin-Obukhov stability correction
+!! functions, and calculates the look-up table for the RSL integrals
+subroutine set_rsl_functions(most, rsl, use_RSL_lookup, a_min, a_max, a_nsteps, b_min, b_max, b_nsteps)
+  class(most_functions_T), intent(inout) :: most
+  class(rsl_functions_T),  pointer       :: rsl !> pointer to RSL function object
+  logical, intent(in) :: use_RSL_lookup !> use lookup tables to compute RSL integrals; otherwise
+                                   !! calculate integrals directly: this can be used for, say,
+                                   !! testing of quality of lookup in a single point runs, but would
+                                   !! very likely be prohibitively slow in global simulations
+  real,    intent(in) :: a_min     !> lower lookup table limit for parameter a of I_m and I_h RSL integrals: a_min > 0.
+  real,    intent(in) :: a_max     !> upper lookup table limit for parameter a of I_m and I_h RSL integrals: a_max > a_min > 0.
+  integer, intent(in) :: a_nsteps  !> number of lookup table steps along the axis a.
+  real,    intent(in) :: b_min     !> lower lookup table limit for parameter b of I_m and I_h RSL integrals.
+  real,    intent(in) :: b_max     !> upper lookup table limit for parameter b of I_m and I_h RSL integrals
+  integer, intent(in) :: b_nsteps  !> number of lookup table steps along the axis b.
+
+  integer :: i,j
+  integer :: ierr
+  real    :: x0,x1,x, y0,y1,y, s
+
+  most%rsl => rsl
+  if (.not.associated(most%rsl)) return ! don't do anything further
+
+  most%use_RSL_lookup = use_RSL_lookup
+     if (most%use_RSL_lookup) then
+     if (allocated(most%a))  deallocate(most%a)
+     if (allocated(most%loga)) deallocate(most%loga)
+     if (allocated(most%b))  deallocate(most%b)
+     if (allocated(most%Im)) deallocate(most%Im)
+     if (allocated(most%It)) deallocate(most%It)
+
+     allocate(most%a(a_nsteps+1),             &
+              most%loga(a_nsteps+1),          &
+              most%b(b_nsteps+1),             &
+              most%Im(a_nsteps+1,b_nsteps+1), &
+              most%It(a_nsteps+1,b_nsteps+1))
+
+!      x0 = sqrt(a_min); x1 = sqrt(a_max)
+!      do i = 1,a_nsteps+1
+!         x = x0+(x1-x0)/a_nsteps*(i-1)
+!         most%a(i) = x**2
+!         most%loga(i) = log(most%a(i))
+!      enddo
+
+     x0 = log(a_min); x1 = log(a_max)
+     do i = 1,a_nsteps+1
+        x = x0+(x1-x0)/a_nsteps*(i-1)
+        most%loga(i) = x
+        most%a(i)    = exp(x)
+     enddo
+
+     ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
+     y0 = sign(abs(b_min)**(1./3.),b_min); y1 = sign(abs(b_max)**(1./3.),b_max)
+     do j = 1,b_nsteps+1
+        y = y0+(y1-y0)/b_nsteps*(j-1)
+        most%b(j) = y**3
+     enddo
+
+     do j = 1,b_nsteps+1
+        i = a_nsteps+1
+        call RSL_integral_R_m(most, most%a(i), HUGE(1.0), most%b(j), most%Im(i,j), ierr)
+        call RSL_integral_R_t(most, most%a(i), HUGE(1.0), most%b(j), most%It(i,j), ierr)
+        do i = a_nsteps,1,-1
+           call RSL_integral_R_m(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
+           most%Im(i,j) = most%Im(i+1,j) + s
+           call RSL_integral_R_t(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
+           most%It(i,j) = most%It(i+1,j) + s
+        enddo
+     enddo
+  endif
+end subroutine set_rsl_functions
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+! add the value of integral stability function roughness sublayer correction for momentum
+_PURE subroutine add_rsl_integral_m(most, n, mask, l_inv, z1, z2, zR, F, df, ierr)
+   class(most_functions_T), intent(in) :: most
+   integer, intent(in)    :: n          ! size of the input/output arrays
+   logical, intent(in)    :: mask(n)    ! don't do calculations where this mask is FALSE
+   real,    intent(in)    :: l_inv(n)   ! 1/L, reciprocal of Monin-Obukhov length
+   real,    intent(in)    :: z1(n)      ! lower limit of the RSL integral, m
+   real,    intent(in)    :: z2(n)      ! upper limit of the RSL integral, m
+   real,    intent(in)    :: zR(n)      ! roughness sublayer length scale, m
+   ! the following inout arguments are updated (incremented) by this subroutine
+   real,    intent(inout), optional :: F (n) ! value of the integral function
+   real,    intent(inout), optional :: df(n) ! derivative of the integral function w.r.t. zeta
+                                        ! where zeta is assumed to be z2/L
+   integer, intent(out),   optional :: ierr  ! error code
+
+   real, parameter :: delta_l_inv = 0.01 ! small increment of 1/L for derivative calculation
+
+   integer :: i
+   real :: a1, a2 ! limits of integration for integral R
+   real :: b  ! parameter of integral R, z_R/L
+   real :: R0 ! value of RSL integral for given parameters
+   real :: R1 ! value of RSL integral with small zeta increment, for derivative calculations
+
+   if (.not.associated(most%rsl)) return ! don't do anything if there is no RSL
+
+   do i = 1, n
+      if (.not.mask(i)) cycle ! skip maske-out points
+      if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
+
+      a1 = z1(i)/zR(i)
+      a2 = z2(i)/zR(i)
+      b  = zR(i)*l_inv(i)
+
+      if (most%use_RSL_lookup) then
+         call RSL_lookup_R     (most, a1, a2, b, most%Im, R0, ierr)
+      else
+         call RSL_integral_R_m (most, a1, a2, b, R0, ierr)
+      endif
+      if (present(F)) F(i) = F(i) - R0
+      ! derivative of RSL correction w.r.t zeta = z2/L is simler to calculate numerically
+      ! rather than through integration of the derivatives of differential stability functions
+      ! w.r.t. zeta
+      if (present(df)) then
+         b = zR(i)*(l_inv(i) + delta_l_inv)
+         if (most%use_RSL_lookup) then
+            call RSL_lookup_R     (most, a1, a2, b, most%Im, R1, ierr)
+         else
+            call RSL_integral_R_m (most, a1, a2, b, R1, ierr)
+         endif
+         dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
+      endif
+   enddo
+end subroutine add_rsl_integral_m
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+! add the value of integral stability function roughness sublayer correction for heat
+_PURE subroutine add_rsl_integral_t(most, n, mask, l_inv, z1, z2, zR, F, df, ierr)
+   class(most_functions_T), intent(in) :: most
+   integer, intent(in)    :: n          ! size of the input/output arrays
+   logical, intent(in)    :: mask(n)    ! don't do calculations where this mask is FALSE
+   real,    intent(in)    :: l_inv(n)   ! 1/L, reciprocal of Monin-Obukhov length
+   real,    intent(in)    :: z1(n)      ! lower limit of the RSL integral, m
+   real,    intent(in)    :: z2(n)      ! upper limit of the RSL integral, m
+   real,    intent(in)    :: zR(n)      ! roughness sublayer length scale, m
+   ! the following inout arguments are updated (incremented) by this subroutine
+   real,    intent(inout), optional :: F (n) ! value of the integral function
+   real,    intent(inout), optional :: df(n) ! derivative of the integral function w.r.t. zeta
+                                        ! where zeta is assumed to be z2/L
+   integer, intent(out),   optional :: ierr  ! error code
+
+   real, parameter :: delta_l_inv = 0.01 ! small increment of 1/L for derivative calculation
+
+   integer :: i
+   real :: a1, a2 ! limits of integration for integral R
+   real :: b  ! parameter of integral R, z_R/L
+   real :: R0 ! value of RSL integral for given parameters
+   real :: R1 ! value of RSL integral with small zeta increment, for derivative calculations
+
+   if (.not.associated(most%rsl)) return ! don't do anything if there is no RSL
+
+   do i = 1, n
+      if (.not.mask(i)) cycle ! skip maske-out points
+      if (.not.zR(i)>0) cycle ! skip points without roughness sublayer
+
+      a1 = z1(i)/zR(i)
+      a2 = z2(i)/zR(i)
+      b  = zR(i)*l_inv(i)
+
+      if (most%use_RSL_lookup) then
+         call RSL_lookup_R     (most, a1, a2, b, most%It, R0, ierr)
+      else
+         call RSL_integral_R_t (most, a1, a2, b, R0, ierr)
+      endif
+      if (present(F)) F(i) = F(i) - R0
+      ! derivative of RSL correction w.r.t zeta = z2/L is simler to calculate numerically
+      ! rather than through integration of the derivatives of differential stability functions
+      ! w.r.t. zeta
+      if (present(df)) then
+         b = zR(i)*(l_inv(i) + delta_l_inv)
+         if (most%use_RSL_lookup) then
+            call RSL_lookup_R     (most, a1, a2, b, most%It, R1, ierr)
+         else
+            call RSL_integral_R_t (most, a1, a2, b, R1, ierr)
+         endif
+         dF(i) = dF(i) - (R1-R0)/(delta_l_inv*z2(i))
+      endif
+   enddo
+end subroutine add_rsl_integral_t
+
+
+_PURE subroutine RSL_lookup_R(most, a1, a2, b, table, s, ierr)
+  class(most_functions_T), intent(in) :: most
+  real,    intent(in)  :: a1     !< lower limit of the integral R, m
+  real,    intent(in)  :: a2     !< upper limit of the integral R, m
+  real,    intent(in)  :: b      !< parameter of the integral, z_R/L
+  real,    intent(in)  :: table(:,:) !< lookup table, Im for momentum or It for heat
+  real,    intent(out) :: s      !< value of the integral
+  integer, intent(out) :: ierr   !< error code
+
+  real :: s1, s2
+
+  s  = ieee_value (s, ieee_signaling_nan)
+
+  call RSL_lookup_I (most, a1, b, table, s1, ierr); if (ierr.ne.0) return
+  call RSL_lookup_I (most, a2, b, table, s2, ierr); if (ierr.ne.0) return
+  s = s1 - s2
+end subroutine RSL_lookup_R
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+!> returns interpolated value of RSL intergral I
+_PURE subroutine RSL_lookup_I(most,a,b,table,s,ierr)
+  class(most_functions_T), intent(in) :: most
+  real,    intent(in)  :: a      !< parameter of the integral, z_1/z_R
+  real,    intent(in)  :: b      !< parameter of the integral, z_R/L
+  real,    intent(in)  :: table(:,:) !< lookup table, Im or It
+  real,    intent(out) :: s      !< value of the integral
+  integer, intent(out) :: ierr   !< error code, 0 = no error
+
+  integer :: i,j
+  real    :: da,db,f1,f2
+
+  s    = ieee_value (s, ieee_signaling_nan)
+  ierr = 1
+  i = bisect(most%a,a)
+  if (i<1.or.i>=size(most%a)) then
+      ! bisect did not find appropriate interval for interpolation
+      write(*,'(a,99(g15.6))') 'a out of bounds :: ',a,most%a(1),most%a(size(most%a))
+      return
+  endif
+  j = bisect(most%b,b,extrapolate_high=.TRUE.)
+  if (j<1.or.j>=size(most%b)) then
+      ! bisect did not find appropriate interval for interpolation
+      write(*,'(a,99(g15.6))') 'b out of bounds :: ',b,most%b(1),most%b(size(most%b))
+      return
+  endif
+
+!   da = (a-most%a(i))/(most%a(i+1)-most%a(i))
+  da = (log(a)-most%loga(i))/(most%loga(i+1)-most%loga(i))
+  f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
+  f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
+
+  db = (b-most%b(j))/(most%b(j+1)-most%b(j))
+  s  = f1*(1-db) + f2*db
+  ierr = 0
+end subroutine RSL_lookup_I
 
 end module monin_obukhov_functions_mod
