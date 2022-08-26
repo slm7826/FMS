@@ -26,6 +26,9 @@ type, abstract :: most_functions_T
   real, allocatable :: b(:)    ! coordinates along axis b
   real, allocatable :: Im(:,:) ! values of integral Im
   real, allocatable :: It(:,:) ! values of integral It
+  ! power for extrapolation into the region of large negative b, assuming I = c b^p
+  real, allocatable :: pm(:) ! for momentum
+  real, allocatable :: pt(:) ! for heat
 contains
   procedure(most_derivative_function), deferred :: derivative_m ! stability correction for momentum
   procedure(most_derivative_function), deferred :: derivative_t ! stability correction for heat and tracers
@@ -573,7 +576,7 @@ function make_brutsaert_functions(rich_crit) result(ptr)
 end function make_brutsaert_functions
 
 _PURE subroutine brutsaert_deriv_m(this,n,mask,zeta,phi,ier)
-  class(brutsaert_functions_T), intent(in)    :: this
+  class(brutsaert_functions_T), intent(in) :: this
   integer, intent(in   )                :: n
   logical, intent(in   ), dimension(n)  :: mask
   real   , intent(in   ), dimension(n)  :: zeta
@@ -771,7 +774,7 @@ end function bisect
 _PURE subroutine RSL_integral_R_m(most, a1, a2, b, s, ierr)
   class(most_functions_T), intent(in) :: most
   real,    intent(in)  :: a1, a2 !< lower and upper limits of the integral, z1/z_R and z2/z_R
-  real, intent(in)     :: b    !< parameter of the integral, z_R/L
+  real,    intent(in)  :: b      !< parameter of the integral, z_R/L
   real,    intent(out) :: s      ! value of the integral
   integer, intent(out) :: ierr   ! error code
 
@@ -819,7 +822,7 @@ end subroutine RSL_integral_R_m
 _PURE subroutine RSL_integral_R_t(most, a1, a2, b, s, ierr)
   class(most_functions_T), intent(in) :: most
   real,    intent(in)  :: a1, a2 !< lower and upper limits of the integral, z1/z_R and z2/z_R
-  real, intent(in)     :: b    !< parameter of the integral, z_R/L
+  real,    intent(in)  :: b      !< parameter of the integral, z_R/L
   real,    intent(out) :: s      ! value of the integral
   integer, intent(out) :: ierr   ! error code
 
@@ -881,22 +884,21 @@ subroutine set_rsl_functions(most, rsl, use_RSL_lookup, a_min, a_max, a_nsteps, 
   integer :: ierr
   real    :: x0,x1,x, y0,y1,y, s
 
-  most%rsl => rsl
-  if (.not.associated(most%rsl)) return ! don't do anything further
+  call dealloc_lookup_tables(most)
 
   most%use_RSL_lookup = use_RSL_lookup
-     if (most%use_RSL_lookup) then
-     if (allocated(most%a))  deallocate(most%a)
-     if (allocated(most%loga)) deallocate(most%loga)
-     if (allocated(most%b))  deallocate(most%b)
-     if (allocated(most%Im)) deallocate(most%Im)
-     if (allocated(most%It)) deallocate(most%It)
 
-     allocate(most%a(a_nsteps+1),             &
-              most%loga(a_nsteps+1),          &
-              most%b(b_nsteps+1),             &
-              most%Im(a_nsteps+1,b_nsteps+1), &
-              most%It(a_nsteps+1,b_nsteps+1))
+  most%rsl => rsl
+  if (.not.associated(most%rsl)) return ! don't do anything further
+  if (.not.most%use_RSL_lookup)  return ! don't do anything further if we are not using lookup
+
+  allocate(most%a(a_nsteps+1),             &
+           most%loga(a_nsteps+1),          &
+           most%b(b_nsteps+1),             &
+           most%Im(a_nsteps+1,b_nsteps+1), &
+           most%It(a_nsteps+1,b_nsteps+1), &
+           most%pm(a_nsteps+1),            &
+           most%pt(a_nsteps+1)             )
 
 !      x0 = sqrt(a_min); x1 = sqrt(a_max)
 !      do i = 1,a_nsteps+1
@@ -905,33 +907,60 @@ subroutine set_rsl_functions(most, rsl, use_RSL_lookup, a_min, a_max, a_nsteps, 
 !         most%loga(i) = log(most%a(i))
 !      enddo
 
-     x0 = log(a_min); x1 = log(a_max)
-     do i = 1,a_nsteps+1
-        x = x0+(x1-x0)/a_nsteps*(i-1)
-        most%loga(i) = x
-        most%a(i)    = exp(x)
-     enddo
+  x0 = log(a_min); x1 = log(a_max)
+  do i = 1,a_nsteps+1
+     x = x0+(x1-x0)/a_nsteps*(i-1)
+     most%loga(i) = x
+     most%a(i)    = exp(x)
+  enddo
 
-     ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
-     y0 = sign(abs(b_min)**(1./3.),b_min); y1 = sign(abs(b_max)**(1./3.),b_max)
-     do j = 1,b_nsteps+1
-        y = y0+(y1-y0)/b_nsteps*(j-1)
-        most%b(j) = y**3
-     enddo
+  ! NOTE: sign (a, b) returns the absolute value of a times the sign of b
+  y0 = sign(abs(b_min)**(1./3.),b_min); y1 = sign(abs(b_max)**(1./3.),b_max)
+  do j = 1,b_nsteps+1
+     y = y0+(y1-y0)/b_nsteps*(j-1)
+     most%b(j) = y**3
+  enddo
 
-     do j = 1,b_nsteps+1
-        i = a_nsteps+1
-        call RSL_integral_R_m(most, most%a(i), HUGE(1.0), most%b(j), most%Im(i,j), ierr)
-        call RSL_integral_R_t(most, most%a(i), HUGE(1.0), most%b(j), most%It(i,j), ierr)
-        do i = a_nsteps,1,-1
-           call RSL_integral_R_m(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
-           most%Im(i,j) = most%Im(i+1,j) + s
-           call RSL_integral_R_t(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
-           most%It(i,j) = most%It(i+1,j) + s
-        enddo
+  do j = 1,b_nsteps+1
+     i = a_nsteps+1
+     call RSL_integral_R_m(most, most%a(i), HUGE(1.0), most%b(j), most%Im(i,j), ierr)
+     call RSL_integral_R_t(most, most%a(i), HUGE(1.0), most%b(j), most%It(i,j), ierr)
+     do i = a_nsteps,1,-1
+        call RSL_integral_R_m(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
+        most%Im(i,j) = most%Im(i+1,j) + s
+        call RSL_integral_R_t(most, most%a(i), most%a(i+1), most%b(j), s, ierr)
+        most%It(i,j) = most%It(i+1,j) + s
      enddo
-  endif
+  enddo
+
+  ! prepare data for extrapolation into the region of large negative b, assuming
+  ! that f(b) = c b**n in that range
+  do i=1,a_nsteps+1
+      ! we are assuming that both b(1) and b(2) are negative
+      ! for momentum
+      most%pm(i) = 1.0
+      if (most%Im(i,1)>0) most%pm(i) = (log(most%Im(i,1))-log(most%Im(i,2))) /  &
+                                       (log(abs(most%b(1)))-log(abs(most%b(2))))
+      ! for heat
+      ; most%pt(i) = 1.0
+      if (most%It(i,1)>0) most%pt(i) = (log(most%It(i,1))-log(most%It(i,2))) /  &
+                                       (log(abs(most%b(1)))-log(abs(most%b(2))))
+  enddo
+
 end subroutine set_rsl_functions
+
+! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+subroutine dealloc_lookup_tables(most)
+  class(most_functions_T), intent(inout) :: most
+
+  if (allocated(most%a))    deallocate(most%a)
+  if (allocated(most%loga)) deallocate(most%loga)
+  if (allocated(most%b))    deallocate(most%b)
+  if (allocated(most%Im))   deallocate(most%Im)
+  if (allocated(most%It))   deallocate(most%It)
+  if (allocated(most%pm))   deallocate(most%pm)
+  if (allocated(most%pt))   deallocate(most%pt)
+end subroutine dealloc_lookup_tables
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ! add the value of integral stability function roughness sublayer correction for momentum
@@ -968,7 +997,7 @@ _PURE subroutine add_rsl_integral_m(most, n, mask, l_inv, z1, z2, zR, F, df, ier
       b  = zR(i)*l_inv(i)
 
       if (most%use_RSL_lookup) then
-         call RSL_lookup_R     (most, a1, a2, b, most%Im, R0, ierr)
+         call RSL_lookup_R     (most, a1, a2, b, most%Im, most%pm, R0, ierr)
       else
          call RSL_integral_R_m (most, a1, a2, b, R0, ierr)
       endif
@@ -979,7 +1008,7 @@ _PURE subroutine add_rsl_integral_m(most, n, mask, l_inv, z1, z2, zR, F, df, ier
       if (present(df)) then
          b = zR(i)*(l_inv(i) + delta_l_inv)
          if (most%use_RSL_lookup) then
-            call RSL_lookup_R     (most, a1, a2, b, most%Im, R1, ierr)
+            call RSL_lookup_R     (most, a1, a2, b, most%Im, most%pm, R1, ierr)
          else
             call RSL_integral_R_m (most, a1, a2, b, R1, ierr)
          endif
@@ -1023,7 +1052,7 @@ _PURE subroutine add_rsl_integral_t(most, n, mask, l_inv, z1, z2, zR, F, df, ier
       b  = zR(i)*l_inv(i)
 
       if (most%use_RSL_lookup) then
-         call RSL_lookup_R     (most, a1, a2, b, most%It, R0, ierr)
+         call RSL_lookup_R     (most, a1, a2, b, most%It, most%pt, R0, ierr)
       else
          call RSL_integral_R_t (most, a1, a2, b, R0, ierr)
       endif
@@ -1034,7 +1063,7 @@ _PURE subroutine add_rsl_integral_t(most, n, mask, l_inv, z1, z2, zR, F, df, ier
       if (present(df)) then
          b = zR(i)*(l_inv(i) + delta_l_inv)
          if (most%use_RSL_lookup) then
-            call RSL_lookup_R     (most, a1, a2, b, most%It, R1, ierr)
+            call RSL_lookup_R     (most, a1, a2, b, most%It, most%pt, R1, ierr)
          else
             call RSL_integral_R_t (most, a1, a2, b, R1, ierr)
          endif
@@ -1044,12 +1073,13 @@ _PURE subroutine add_rsl_integral_t(most, n, mask, l_inv, z1, z2, zR, F, df, ier
 end subroutine add_rsl_integral_t
 
 
-_PURE subroutine RSL_lookup_R(most, a1, a2, b, table, s, ierr)
+_PURE subroutine RSL_lookup_R(most, a1, a2, b, table, p, s, ierr)
   class(most_functions_T), intent(in) :: most
   real,    intent(in)  :: a1     !< lower limit of the integral R, m
   real,    intent(in)  :: a2     !< upper limit of the integral R, m
   real,    intent(in)  :: b      !< parameter of the integral, z_R/L
   real,    intent(in)  :: table(:,:) !< lookup table, Im for momentum or It for heat
+  real,    intent(in)  :: p(:)   !< power for extrapolation in large negative b region
   real,    intent(out) :: s      !< value of the integral
   integer, intent(out) :: ierr   !< error code
 
@@ -1057,18 +1087,19 @@ _PURE subroutine RSL_lookup_R(most, a1, a2, b, table, s, ierr)
 
   s  = ieee_value (s, ieee_signaling_nan)
 
-  call RSL_lookup_I (most, a1, b, table, s1, ierr); if (ierr.ne.0) return
-  call RSL_lookup_I (most, a2, b, table, s2, ierr); if (ierr.ne.0) return
+  call RSL_lookup_I (most, a1, b, table, p, s1, ierr); if (ierr.ne.0) return
+  call RSL_lookup_I (most, a2, b, table, p, s2, ierr); if (ierr.ne.0) return
   s = s1 - s2
 end subroutine RSL_lookup_R
 
 ! - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 !> returns interpolated value of RSL intergral I
-_PURE subroutine RSL_lookup_I(most,a,b,table,s,ierr)
+_PURE subroutine RSL_lookup_I(most,a,b,table,p,s,ierr)
   class(most_functions_T), intent(in) :: most
   real,    intent(in)  :: a      !< parameter of the integral, z_1/z_R
   real,    intent(in)  :: b      !< parameter of the integral, z_R/L
   real,    intent(in)  :: table(:,:) !< lookup table, Im or It
+  real,    intent(in)  :: p(:)   !< power for extrapolation in large negative b region
   real,    intent(out) :: s      !< value of the integral
   integer, intent(out) :: ierr   !< error code, 0 = no error
 
@@ -1084,19 +1115,23 @@ _PURE subroutine RSL_lookup_I(most,a,b,table,s,ierr)
       return
   endif
   j = bisect(most%b,b,extrapolate_high=.TRUE.)
-  if (j<1.or.j>=size(most%b)) then
-      ! bisect did not find appropriate interval for interpolation
-      write(*,'(a,99(g15.6))') 'b out of bounds :: ',b,most%b(1),most%b(size(most%b))
-      return
-  endif
 
 !   da = (a-most%a(i))/(most%a(i+1)-most%a(i))
   da = (log(a)-most%loga(i))/(most%loga(i+1)-most%loga(i))
-  f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
-  f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
 
-  db = (b-most%b(j))/(most%b(j+1)-most%b(j))
-  s  = f1*(1-db) + f2*db
+  if (j<1) then
+     ! we are below negative limit of b, extrapolate assuming I = c b^p
+     f1 = table(i,  1)*(b/most%b(1))**p(i  )
+     f2 = table(i+1,1)*(b/most%b(1))**p(i+1)
+     s  = f1*(1-da) + f2*da
+  else
+     ! inside the table (or in for large positive b) use bilinear interpolation/extrapolation
+     f1 = table(i,j  )*(1-da)+table(i+1,j  )*da
+     f2 = table(i,j+1)*(1-da)+table(i+1,j+1)*da
+
+     db = (b-most%b(j))/(most%b(j+1)-most%b(j))
+     s  = f1*(1-db) + f2*db
+  endif
   ierr = 0
 end subroutine RSL_lookup_I
 
