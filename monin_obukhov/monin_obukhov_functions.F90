@@ -756,12 +756,12 @@ _PURE integer function bisect(xx, x1, extrapolate_high, extrapolate_low)
         endif
      enddo
      bisect = low
-  else if (x>xx(n).and.extr_h) then
-     bisect = n-1
-  else if (x<xx(1).and.extr_l) then
-     bisect = 1
-  else
-     bisect = -1
+  else if (x>xx(n)) then
+     bisect = n
+     if (extr_h) bisect = n-1
+  else if (x<xx(1)) then
+     bisect = 0
+     if (extr_l) bisect = 1
   endif
 end function bisect
 
@@ -1109,9 +1109,13 @@ _PURE subroutine RSL_lookup_I(most,a,b,table,p,s,ierr)
   s    = ieee_value (s, ieee_signaling_nan)
   ierr = 1
   i = bisect(most%a,a)
-  if (i<1.or.i>=size(most%a)) then
+  if (i<1) then
       ! bisect did not find appropriate interval for interpolation
-      write(*,'(a,99(g15.6))') 'a out of bounds :: ',a,most%a(1),most%a(size(most%a))
+      write(*,'(a,99(g15.6))') 'a=z_1/z_R is out of bounds :: ',a,most%a(1),most%a(size(most%a))
+      return
+  else if (i>=size(most%a)) then
+      ! we assume that integral betweel large z_1/z_R and infinity is close to zero
+      s = 0.0; ierr = 0
       return
   endif
   j = bisect(most%b,b,extrapolate_high=.TRUE.)
