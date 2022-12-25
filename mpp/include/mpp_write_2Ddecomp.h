@@ -16,7 +16,7 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
-    subroutine WRITE_RECORD_( unit, field, nwords, data, time_in, domain, tile_count)
+    subroutine WRITE_RECORD_( unit, field, num_words, data, time_in, domain, tile_count)
 !routine that is finally called by all mpp_write routines to perform the write
 !a non-netCDF record contains:
 !      field ID
@@ -33,25 +33,25 @@
 !   with a timestamp of NULLTIME. There is no check in the code to prevent
 !   the user from repeatedly writing a static field.
 
-      integer,           intent(in)           :: unit, nwords
+      integer,           intent(in)           :: unit, num_words
       type(fieldtype),   intent(in)           :: field
-      MPP_TYPE_,         intent(in)           :: data(nwords)
+      MPP_TYPE_,         intent(in)           :: data(num_words)
       MPP_TYPE_,         intent(in), optional :: time_in
       type(domain2D),    intent(in), optional :: domain
       integer,           intent(in), optional :: tile_count
       integer, dimension(size(field%axes(:))) :: start, axsiz
-      real(DOUBLE_KIND) :: time
+      real(r8_kind) :: time
       integer :: time_level
       logical :: newtime
       integer :: subdomain(4)
-      integer :: packed_data(nwords)
+      integer :: packed_data(num_words)
       integer :: i, is, ie, js, je
 
-      real(FLOAT_KIND) :: data_r4(nwords)
+      real(r4_kind) :: data_r4(num_words)
       pointer( ptr1, data_r4)
       pointer( ptr2, packed_data)
 
-      if (mpp_io_stack_size < nwords) call mpp_io_set_stack_size(nwords)
+      if (mpp_io_stack_size < num_words) call mpp_io_set_stack_size(num_words)
 
       if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_WRITE: must first call mpp_io_init.' )
       if( .NOT.mpp_file(unit)%write_on_this_pe) return
@@ -129,21 +129,18 @@
 #ifdef use_netCDF
 !write time information if new time
           if( newtime )then
-              if( KIND(time).EQ.DOUBLE_KIND )then
-                  error = NF_PUT_VAR1_DOUBLE( mpp_file(unit)%ncid, mpp_file(unit)%id, mpp_file(unit)%time_level, time )
-              else if( KIND(time).EQ.FLOAT_KIND )then
-                  error = NF_PUT_VAR1_REAL  ( mpp_file(unit)%ncid, mpp_file(unit)%id, mpp_file(unit)%time_level, time )
+              if( KIND(time).EQ.r8_kind )then
+                  error = NF_PUT_VAR1_DOUBLE( mpp_file(unit)%ncid, mpp_file(unit)%id, mpp_file(unit:unit)%time_level,&
+                                            & time )
+              else if( KIND(time).EQ.r4_kind )then
+                 error = NF90_PUT_VAR ( mpp_file(unit)%ncid, mpp_file(unit)%id, time)
               end if
           end if
           if( field%pack == 0 )then
               packed_data = CEILING(data)
               error = NF_PUT_VARA_INT   ( mpp_file(unit)%ncid, field%id, start, axsiz, packed_data )
           elseif( field%pack.GT.0 .and. field%pack.LE.2 )then
-              if( KIND(data).EQ.DOUBLE_KIND )then
-                  error = NF_PUT_VARA_DOUBLE( mpp_file(unit)%ncid, field%id, start, axsiz, data )
-              else if( KIND(data).EQ.FLOAT_KIND )then
-                  error = NF_PUT_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, data )
-              end if
+              error = NF90_PUT_VAR      ( mpp_file(unit)%ncid, field%id, data, start=start, count=axsiz )
           else              !convert to integer using scale and add: no error check on packed data representation
               packed_data = nint((data-field%add)/field%scale)
               error = NF_PUT_VARA_INT   ( mpp_file(unit)%ncid, field%id, start, axsiz, packed_data )
@@ -164,27 +161,9 @@
               write( unit,* )field%id, subdomain, time_level, time, data
           else                      !MPP_IEEE32 or MPP_NATIVE
               if( mpp_file(unit)%access.EQ.MPP_SEQUENTIAL )then
-#ifdef __sgi
-                  if( mpp_file(unit)%format.EQ.MPP_IEEE32 )then
-                      data_r4 = data !IEEE conversion layer on SGI until assign -N ieee_32 is supported
-                      write(unit)field%id, subdomain, time_level, time, data_r4
-                  else
-                      write(unit)field%id, subdomain, time_level, time, data
-                  end if
-#else
                   write(unit)field%id, subdomain, time_level, time, data
-#endif
               else                  !MPP_DIRECT
-#ifdef __sgi
-                  if( mpp_file(unit)%format.EQ.MPP_IEEE32 )then
-                      data_r4 = data !IEEE conversion layer on SGI until assign -N ieee_32 is supported
-                      write( unit, rec=mpp_file(unit)%record )field%id, subdomain, time_level, time, data_r4
-                  else
-                      write( unit, rec=mpp_file(unit)%record )field%id, subdomain, time_level, time, data
-                  end if
-#else
                   write( unit, rec=mpp_file(unit)%record )field%id, subdomain, time_level, time, data
-#endif
                   if( debug )print '(a,i6,a,i6)', 'MPP_WRITE: PE=', pe, ' wrote record ', mpp_file(unit)%record
               end if
           end if
@@ -224,7 +203,7 @@
 !mpp_write writes <data> which has the domain decomposition <domain>
       integer,           intent(in)           :: unit
       type(fieldtype),   intent(in)           :: field
-      type(domain2D),    intent(inout)        :: domain 
+      type(domain2D),    intent(inout)        :: domain
       MPP_TYPE_,         intent(inout)        :: data(:,:,:)
       MPP_TYPE_,         intent(in), optional :: tstamp
       integer,           intent(in), optional :: tile_count
@@ -299,7 +278,7 @@
                  call WRITE_RECORD_( unit, field, size(data(:,:,:)), data, tstamp)
               endif
           else
-              io_domain=>mpp_get_io_domain(mpp_file(unit)%domain) 
+              io_domain=>mpp_get_io_domain(mpp_file(unit)%domain)
               call mpp_get_global_domain ( io_domain, isg, ieg, jsg, jeg, tile_count=tile_count, position=position )
               if(mpp_file(unit)%write_on_this_pe .OR. .NOT. global_field_on_root_pe) then
                  allocate( gdata(isg:ieg,jsg:jeg,size(data,3)) )
@@ -324,7 +303,7 @@
 !store compute domain as contiguous data and pass to write_record
           allocate( cdata(is:ie,js:je,size(data,3)) )
           cdata(:,:,:) = data(is-isd+1:ie-isd+1,js-jsd+1:je-jsd+1,:)
-          call WRITE_RECORD_( unit, field, size(cdata(:,:,:)), cdata, tstamp, domain, tile_count ) 
+          call WRITE_RECORD_( unit, field, size(cdata(:,:,:)), cdata, tstamp, domain, tile_count )
       else
 !data is already contiguous
           call WRITE_RECORD_( unit, field, size(data(:,:,:)), data, tstamp, domain, tile_count )
@@ -339,7 +318,7 @@
 !mpp_write writes <data> which has the domain decomposition <domain>
       integer,           intent(in)           :: unit
       type(fieldtype),   intent(in)           :: field
-      type(domain2D),    intent(inout)        :: domain 
+      type(domain2D),    intent(inout)        :: domain
       MPP_TYPE_,         intent(inout)        :: data(:,:,:,:)
       MPP_TYPE_,         intent(in), optional :: tstamp
       integer,           intent(in), optional :: tile_count
@@ -414,7 +393,7 @@
                  call WRITE_RECORD_( unit, field, size(data(:,:,:,:)), data, tstamp)
               endif
           else
-              io_domain=>mpp_get_io_domain(mpp_file(unit)%domain) 
+              io_domain=>mpp_get_io_domain(mpp_file(unit)%domain)
               call mpp_get_global_domain ( io_domain, isg, ieg, jsg, jeg, tile_count=tile_count, position=position )
               if(mpp_file(unit)%write_on_this_pe .OR. .NOT. global_field_on_root_pe) then
                  allocate( gdata(isg:ieg,jsg:jeg,size(data,3),size(data,4)) )
@@ -439,7 +418,7 @@
 !store compute domain as contiguous data and pass to write_record
           allocate( cdata(is:ie,js:je,size(data,3),size(data,4)) )
           cdata(:,:,:,:) = data(is-isd+1:ie-isd+1,js-jsd+1:je-jsd+1,:,:)
-          call WRITE_RECORD_( unit, field, size(cdata(:,:,:,:)), cdata, tstamp, domain, tile_count ) 
+          call WRITE_RECORD_( unit, field, size(cdata(:,:,:,:)), cdata, tstamp, domain, tile_count )
       else
 !data is already contiguous
           call WRITE_RECORD_( unit, field, size(data(:,:,:,:)), data, tstamp, domain, tile_count )

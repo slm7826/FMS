@@ -18,6 +18,11 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @file
+!> @brief Handles opening and closing files in @ref mpp_io_mod
+
+!> @addtogroup mpp_io_mod
+!> @{
 
 ! <SUBROUTINE NAME="mpp_open">
 
@@ -70,7 +75,7 @@
 !     recl is the record length in bytes.
 !   </IN>
 !   <IN NAME="iospec" TYPE="character(len=*)">
-!     iospec is a system hint for I/O organization, e.g assign(1) on SGI/Cray systems.
+!     iospec is deprecated, but included for interface uniformity reasons.
 !   </IN>
 !   <IN NAME="nohdrs" TYPE="logical">
 !     nohdrs has no effect when action=MPP_RDONLY|MPP_APPEND or when form=MPP_NETCDF
@@ -111,29 +116,6 @@
 !
 !   For netCDF files, headers are always written even if
 !   <TT>nohdrs=.TRUE.</TT>
-!
-!   The string <TT>iospec</TT> is passed to the OS to
-!   characterize the I/O to be performed on the file opened on
-!   <TT>unit</TT>. This is typically used for I/O optimization. For
-!   example, the FFIO layer on SGI/Cray systems can be used for
-!   controlling synchronicity of reads and writes, buffering of data
-!   between user space and disk for I/O optimization, striping across
-!   multiple disk partitions, automatic data conversion and the like
-!   (<TT>man intro_ffio</TT>). All these actions are controlled through
-!   the <TT>assign</TT> command. For example, to specify asynchronous
-!   caching of data going to a file open on <TT>unit</TT>, one would do:
-!
-!   <PRE>
-!   call mpp_open( unit, ... iospec='-F cachea' )
-!   </PRE>
-!
-!   on an SGI/Cray system, which would pass the supplied
-!   <TT>iospec</TT> to the <TT>assign(3F)</TT> system call.
-!
-!   Currently <TT>iospec </TT>performs no action on non-SGI/Cray
-!   systems. The interface is still provided, however: users are cordially
-!   invited to add the requisite system calls for other systems.
-!   </NOTE>
 ! </SUBROUTINE>
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !                                                                            !
@@ -153,8 +135,7 @@
 !  file is the filename: REQUIRED                                            !
 !    we append .nc to filename if it is a netCDF file                        !
 !    we append .<pppp> to filename if fileset is private (pppp is PE number) !
-!  iospec is a system hint for I/O organization                              !
-!         e.g assign(1) on SGI/Cray systems.                                 !
+!  iospec is a deprecated option                                             !
 !  if nohdrs is .TRUE. headers are not written on non-netCDF writes.         !
 !  nohdrs has no effect when action=MPP_RDONLY|MPP_APPEND                    !
 !                    or when form=MPP_NETCDF                                 !
@@ -185,14 +166,14 @@
 !ug support
                          domain_ug)
 !----------
-      integer,         intent(out)           :: unit   
+      integer,         intent(out)           :: unit
       character(len=*), intent(in)           :: file
-      integer,          intent(in), optional :: action, form, access 
+      integer,          intent(in), optional :: action, form, access
       integer,          intent(in), optional :: threading, fileset, recl
       character(len=*), intent(in), optional :: iospec
       logical,          intent(in), optional :: nohdrs
       integer,         intent(out), optional :: iostat
-      logical,          intent(in), optional :: is_root_pe      
+      logical,          intent(in), optional :: is_root_pe
       type(domain2d),   intent(in), optional :: domain
 !----------
 !ug support
@@ -212,20 +193,20 @@
 !ug support
       type(domain2d),pointer :: io_domain
       type(domainUG),pointer :: io_domain_ug
-      integer(INT_KIND)      :: io_layout_ug
-      integer(INT_KIND)      :: tile_id_ug
+      integer(i4_kind)      :: io_layout_ug
+      integer(i4_kind)      :: tile_id_ug
 !----------
       integer*8                             :: lenp
       integer                               :: comm
       integer                               :: info, ierror
-      integer,dimension(:), allocatable     :: glist(:)  
+      integer,dimension(:), allocatable     :: glist(:)
       integer                               ::lena, lenb
       character(len=12)                     ::ncblk
-      character(len=128)                    ::nc_name 
+      character(len=128)                    ::nc_name
       integer                               ::f_size, f_stat
       integer                               ::fsize, inital = 0
       character(len=128)                    :: f_test
-      
+
 !----------
 !ug support
      !Only allow one type of mpp domain.
@@ -239,7 +220,7 @@
       io_domain => null()
       io_domain_ug => null()
 !----------
-     
+
       call mpp_clock_begin(mpp_open_clock)
       if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_OPEN: must first call mpp_io_init.' )
       on_root_pe = mpp_pe() == mpp_root_pe()
@@ -253,8 +234,9 @@
       if( PRESENT(form) )form_flag = form
 #ifndef use_netCDF
       if( form_flag.EQ.MPP_NETCDF ) &
-           call mpp_error( FATAL, 'MPP_OPEN: To open a file with form=MPP_NETCDF, you must compile mpp_io with -Duse_netCDF.' )
-#endif     
+           call mpp_error( FATAL, &
+                         & 'MPP_OPEN: To open a file with form=MPP_NETCDF, you must compile mpp_io with -Duse_netCDF.')
+#endif
       access_flag = MPP_SEQUENTIAL
       if( PRESENT(access) )access_flag = access
       threading_flag = MPP_SINGLE
@@ -262,6 +244,11 @@
       fileset_flag = MPP_MULTI
       if( PRESENT(fileset) )fileset_flag = fileset
       if( threading_flag.EQ.MPP_SINGLE )fileset_flag = MPP_SINGLE
+
+!-- iospec presence warning
+      if( PRESENT(iospec) ) &
+       & call mpp_error( NOTE, 'MPP_OPEN: iospec option has been deprecated and will be removed at some future date')
+
 
       io_domain_exist = .false.
       if( PRESENT(domain) ) then
@@ -291,9 +278,9 @@
          if( fileset_flag.EQ.MPP_SINGLE .AND. .NOT.on_root_pe ) then
             write_on_this_pe = .false.
             read_on_this_pe = .false.
-         endif   
-      endif   
-   
+         endif
+      endif
+
       if( io_domain_exist) then
 
 !----------
@@ -306,7 +293,7 @@
           endif
 !----------
 
-      endif 
+      endif
       if( action_flag == MPP_RDONLY) write_on_this_pe = .false.
       !get a unit number
       if( .NOT. write_on_this_pe .AND. action_flag.NE.MPP_RDONLY .AND. .NOT. io_domain_exist)then
@@ -352,7 +339,7 @@
       nc_pos = index(file,'.nc.')
       dist_file = nc_pos>0  ! this is a distributed file ending with filename.nc.0???
       text = file
-      length = len_trim(file)      
+      length = len_trim(file)
       if(form_flag.EQ.MPP_NETCDF.AND. file(length-2:length) /= '.nc' .AND. .NOT.dist_file) &
          text = trim(file)//'.nc'
 
@@ -437,9 +424,9 @@
          endif
       endif
       mpp_file(unit)%name = text
-      if( verbose )print '(a,2i6,x,a,5i5)', 'MPP_OPEN: PE, unit, filename, action, format, access, threading, fileset=', &
-           pe, unit, trim(mpp_file(unit)%name), action_flag, form_flag, access_flag, threading_flag, fileset_flag
-           
+      if(verbose) print '(a,2i6,x,a,5i5)','MPP_OPEN: PE, unit, filename, action, format, access, threading, fileset=',&
+           & pe, unit, trim(mpp_file(unit)%name), action_flag, form_flag, access_flag, threading_flag, fileset_flag
+
 !action: read, write, overwrite, append: act and pos are ignored by netCDF
       if( action_flag.EQ.MPP_RDONLY )then
           act = 'READ'
@@ -468,89 +455,52 @@
               acc = 'SEQUENTIAL'
           else if( access_flag.EQ.MPP_DIRECT )then
               acc = 'DIRECT'
-              if( form_flag.EQ.MPP_ASCII )call mpp_error( FATAL, 'MPP_OPEN: formatted direct access I/O is prohibited.' )
+              if( form_flag.EQ.MPP_ASCII )call mpp_error( FATAL, &
+                 &  'MPP_OPEN: formatted direct access I/O is prohibited.' )
               if( .NOT.PRESENT(recl) ) &
-                   call mpp_error( FATAL, 'MPP_OPEN: recl (record length in bytes) must be specified with access=MPP_DIRECT.' )
+                   call mpp_error( FATAL, &
+                                 & 'MPP_OPEN: recl (record length in bytes) must be specified with access=MPP_DIRECT.')
               mpp_file(unit)%record = 1
               records_per_pe = 1 !each PE writes 1 record per mpp_write
           else
               call mpp_error( FATAL, 'MPP_OPEN: access must be one of MPP_SEQUENTIAL or MPP_DIRECT.' )
           end if
-      end if  
-          
+      end if
+
 !threading: SINGLE or MULTI
       if( threading_flag.EQ.MPP_MULTI )then
 !fileset: MULTI or SINGLE (only for multi-threaded I/O
           if( fileset_flag.EQ.MPP_SINGLE )then
               if( form_flag.EQ.MPP_NETCDF .AND. act.EQ.'WRITE' ) &
-                   call mpp_error( FATAL, 'MPP_OPEN: netCDF currently does not support single-file multi-threaded output.' )
-                   
-#ifdef _CRAYT3E    
-              call ASSIGN( 'assign -I -F global.privpos f:'//trim(mpp_file(unit)%name), error )
-#endif        
+                   call mpp_error( FATAL, &
+                                  &  'MPP_OPEN: netCDF currently does not support single-file multi-threaded output.' )
+
           else if( fileset_flag.NE.MPP_MULTI )then
               call mpp_error( FATAL, 'MPP_OPEN: fileset must be one of MPP_MULTI or MPP_SINGLE.' )
           end if
       else if( threading_flag.NE.MPP_SINGLE )then
           call mpp_error( FATAL, 'MPP_OPEN: threading must be one of MPP_SINGLE or MPP_MULTI.' )
       end if
-          
-!apply I/O specs before opening the file
-!note that -P refers to the scope of a fortran unit, which is always thread-private even if file is shared
-#ifdef CRAYPVP
-#ifndef _CRAYX1
-      call ASSIGN( 'assign -I -P thread  f:'//trim(mpp_file(unit)%name), error )
-#endif
-#endif
-#ifdef _CRAYT3E
-      call ASSIGN( 'assign -I -P private f:'//trim(mpp_file(unit)%name), error )
-#endif
-#ifdef _CRAYX1
-      if (file(length-3:length) == '.nml') then
-        call ASSIGN( 'assign -I -f77 f:'//trim(mpp_file(unit)%name), error )
-!       call ASSIGN( 'assign -I -F global f:'//trim(mpp_file(unit)%name), error )
-      endif
-#endif
-      if( PRESENT(iospec) )then
-!iospec provides hints to the system on how to organize I/O
-!on Cray systems this is done through 'assign', see assign(1) and assign(3F)
-!on other systems this will be expanded as needed
-!no error checks here on whether the supplied iospec is valid
-#if defined(SGICRAY) || defined(_CRAYX1)
-          call ASSIGN( 'assign -I '//trim(iospec)//' f:'//trim(mpp_file(unit)%name), error )
-          if( form_flag.EQ.MPP_NETCDF )then
-!for netCDF on SGI/Cray systems we pass it to the environment variable NETCDF_XFFIOSPEC
-!ideally we should parse iospec, pass the argument of -F to NETCDF_FFIOSPEC, and the rest to NETCDF_XFFIOSPEC
-!maybe I'll get around to it someday
-!PXFSETENV is a POSIX-standard routine for setting environment variables from fortran
-              !if we ever use this again....F2003 non-intel flavor of getenv
-              !call get_enviornment_variable( 'NETCDF_XFFIOSPEC', trim(iospec))
-              call PXFSETENV( 'NETCDF_XFFIOSPEC', 0, trim(iospec), 0, 1, error )
-          end if
-#endif        
-      end if
-      
+
 !open the file as specified above for various formats
       if( form_flag.EQ.MPP_NETCDF )then
-#ifdef PAR_ACCESS  
+#ifdef PAR_ACCESS
       !adding some items for netcdf-4.... --fmi
       if( .NOT.PRESENT(pelist)) then
         allocate (glist(0:npes-1))
-        call mpp_get_current_pelist(glist, name, comm) 
+        call mpp_get_current_pelist(glist, name, comm)
       end if
-      
+
       !create info parts...
       call MPI_INFO_CREATE(info, ierror)
-      
+
      !F2003 convention
      !call get_enviornment_variable('NC_BLKSZ', ncblk)
      call GETENV( 'NC_BLKSZ', ncblk)
      ncblk = trim(ncblk)
-     
-  
-     if (ncblk /= "") then
-      
 
+
+     if (ncblk /= "") then
 
         call MPI_INFO_SET(info, "cb_buffer_size", ncblk, ierror)
         call MPI_INFO_SET(info, "ind_rd_buffer_size", ncblk, ierror)
@@ -570,8 +520,8 @@
                  !write (*,*) 'hello', trim(mpp_file(unit)%name)
                  nc_name = 'NC_BLKSZ_'//trim(mpp_file(unit)%name)
                  !write (*,*) 'nc_name: ', nc_name,  ' bcblk: ', ncblk
- 
-      
+
+
 
                  !make the call.....
                  !f2003 replaces GETENV with get_enviornment_variable so the guts are here if we need to switch
@@ -586,7 +536,7 @@
 
 
                   endif
-      
+
                  !if no general setting then use default
                   if (ncblk .EQ. '') then
                     ncblk = '64k'  !change for platform...perhaps we should set an ifdef for this....
@@ -613,13 +563,15 @@
               if(debug) write(*,*) 'Blocksize for create of ', trim(mpp_file(unit)%name),' is ', fsize
               error = NF__CREATE( trim(mpp_file(unit)%name),NF_CLOBBER, inital, fsize, mpp_file(unit)%ncid )
               call netcdf_err( error, mpp_file(unit) )
-              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY and MPP_OVERWR
+              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY
+                                       !! and MPP_OVERWR
               if( verbose )print '(a,i6,i16)', 'MPP_OPEN: overwrite netCDF file: pe, ncid=', pe, mpp_file(unit)%ncid
           else if( action_flag.EQ.MPP_APPEND )then
               inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error,mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error, mpp_file(unit))
 !get the current time level of the file: writes to this file will be at next time level
               error = NF_INQ_UNLIMDIM( mpp_file(unit)%ncid, unlim%did )
               if( error.EQ.NF_NOERR )then
@@ -636,7 +588,8 @@
                inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error,mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error, mpp_file(unit))
               if( verbose )print '(a,i6,i16,i4)', 'MPP_OPEN: opening existing netCDF file: pe, ncid, time_axis_id=',&
                    pe, mpp_file(unit)%ncid, mpp_file(unit)%id
               mpp_file(unit)%format=form_flag ! need this for mpp_read
@@ -646,20 +599,24 @@
 #elif use_LARGEFILE
           if( action_flag.EQ.MPP_WRONLY )then
               if(debug) write(*,*) 'Blocksize for create of ', trim(mpp_file(unit)%name),' is ', fsize
-              error = NF__CREATE( trim(mpp_file(unit)%name),IOR(NF_64BIT_OFFSET,NF_NOCLOBBER),inital,fsize,mpp_file(unit)%ncid )
+              error = NF__CREATE( trim(mpp_file(unit)%name),IOR(NF_64BIT_OFFSET,NF_NOCLOBBER),inital,fsize, &
+                                & mpp_file(unit)%ncid )
               call netcdf_err( error, mpp_file(unit) )
               if( verbose )print '(a,i6,i16)', 'MPP_OPEN: new netCDF file: pe, ncid=', pe, mpp_file(unit)%ncid
           else if( action_flag.EQ.MPP_OVERWR )then
               if(debug) write(*,*) 'Blocksize for create of ', trim(mpp_file(unit)%name),' is ', fsize
-              error = NF__CREATE( trim(mpp_file(unit)%name),IOR(NF_64BIT_OFFSET,NF_CLOBBER), inital, fsize, mpp_file(unit)%ncid )
+              error = NF__CREATE( trim(mpp_file(unit)%name),IOR(NF_64BIT_OFFSET,NF_CLOBBER), inital, fsize, &
+                                & mpp_file(unit)%ncid )
               call netcdf_err( error, mpp_file(unit) )
-              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY and MPP_OVERWR
+              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY
+                                       !! and MPP_OVERWR
               if( verbose )print '(a,i6,i16)', 'MPP_OPEN: overwrite netCDF file: pe, ncid=', pe, mpp_file(unit)%ncid
           else if( action_flag.EQ.MPP_APPEND )then
               inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error, mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error, mpp_file(unit))
 !get the current time level of the file: writes to this file will be at next time level
               error = NF_INQ_UNLIMDIM( mpp_file(unit)%ncid, unlim%did )
               if( error.EQ.NF_NOERR )then
@@ -676,7 +633,8 @@
                inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error,mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error, mpp_file(unit))
               if( verbose )print '(a,i6,i16,i4)', 'MPP_OPEN: opening existing netCDF file: pe, ncid, time_axis_id=',&
                    pe, mpp_file(unit)%ncid, mpp_file(unit)%id
               mpp_file(unit)%format=form_flag ! need this for mpp_read
@@ -686,20 +644,24 @@
 #else
           if( action_flag.EQ.MPP_WRONLY )then
               if(debug) write(*,*) 'Blocksize for create of ', trim(mpp_file(unit)%name),' is ', fsize
-              error=NF__CREATE( trim(mpp_file(unit)%name), IOR(NF_NETCDF4,NF_CLASSIC_MODEL), inital, fsize, mpp_file(unit)%ncid )
+              error=NF__CREATE( trim(mpp_file(unit)%name), IOR(NF_NETCDF4,NF_CLASSIC_MODEL), inital, fsize, &
+                              & mpp_file(unit)%ncid )
               call netcdf_err( error, mpp_file(unit) )
               if( verbose )print '(a,i6,i16)', 'MPP_OPEN: new netCDF file: pe, ncid=', pe, mpp_file(unit)%ncid
           else if( action_flag.EQ.MPP_OVERWR )then
               if(debug) write(*,*) 'Blocksize for create of ', trim(mpp_file(unit)%name),' is ', fsize
-              error=NF__CREATE( trim(mpp_file(unit)%name), IOR(NF_NETCDF4,NF_CLASSIC_MODEL), inital, fsize, mpp_file(unit)%ncid )
+              error=NF__CREATE( trim(mpp_file(unit)%name), IOR(NF_NETCDF4,NF_CLASSIC_MODEL), inital, fsize, &
+                              & mpp_file(unit)%ncid )
               call netcdf_err( error, mpp_file(unit) )
-              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY and MPP_OVERWR
+              action_flag = MPP_WRONLY !after setting clobber, there is no further distinction btwn MPP_WRONLY
+                                       !! and MPP_OVERWR
               if( verbose )print '(a,i6,i16)', 'MPP_OPEN: overwrite netCDF file: pe, ncid=', pe, mpp_file(unit)%ncid
           else if( action_flag.EQ.MPP_APPEND )then
               inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error,mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_WRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error,mpp_file(unit))
 !get the current time level of the file: writes to this file will be at next time level
               error = NF_INQ_UNLIMDIM( mpp_file(unit)%ncid, unlim%did )
               if( error.EQ.NF_NOERR )then
@@ -716,7 +678,8 @@
                inquire(file=trim(mpp_file(unit)%name),EXIST=exists)
               if (.NOT.exists) call mpp_error(FATAL,'MPP_OPEN:'&
                    &//trim(mpp_file(unit)%name)//' does not exist.')
-              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid);call netcdf_err(error,mpp_file(unit))
+              error=NF__OPEN(trim(mpp_file(unit)%name),NF_NOWRITE,fsize,mpp_file(unit)%ncid)
+              call netcdf_err(error,mpp_file(unit))
               if( verbose )print '(a,i6,i16,i4)', 'MPP_OPEN: opening existing netCDF file: pe, ncid, time_axis_id=',&
                    pe, mpp_file(unit)%ncid, mpp_file(unit)%id
               mpp_file(unit)%format=form_flag ! need this for mpp_read
@@ -724,7 +687,7 @@
           end if
           mpp_file(unit)%opened = .TRUE.
 
-#endif    
+#endif
 #endif
       else
 !format: ascii, native, or IEEE 32 bit
@@ -732,12 +695,6 @@
               for = 'FORMATTED'
           else if( form_flag.EQ.MPP_IEEE32 )then
               for = 'UNFORMATTED'
-!assign -N is currently unsupported on SGI
-#ifdef _CRAY  
-#ifndef _CRAYX1  
-              call ASSIGN( 'assign -I -N ieee_32 f:'//trim(mpp_file(unit)%name), error )
-#endif        
-#endif        
           else if( form_flag.EQ.MPP_NATIVE )then
               for = 'UNFORMATTED'
           else
@@ -745,19 +702,20 @@
           end if
           inquire( file=trim(mpp_file(unit)%name), EXIST=exists )
           if( exists .AND. action_flag.EQ.MPP_WRONLY ) &
-               call mpp_error( WARNING, 'MPP_OPEN: File '//trim(mpp_file(unit)%name)//' opened WRONLY already exists!' )
+               call mpp_error( WARNING, 'MPP_OPEN: File '//trim(mpp_file(unit)%name)//' opened WRONLY already exists!')
           if( action_flag.EQ.MPP_OVERWR )action_flag = MPP_WRONLY
 !perform the OPEN here
           ios = 0
           if( PRESENT(recl) )then
               if( verbose )print '(2(x,a,i6),5(x,a),a,i8)', 'MPP_OPEN: PE=', pe, &
-                   'unit=', unit, trim(mpp_file(unit)%name), 'attributes=', trim(acc), trim(for), trim(act), ' RECL=', recl
+                   'unit=', unit, trim(mpp_file(unit)%name), 'attributes=', trim(acc), trim(for), trim(act), &
+                                      &  ' RECL=', recl
               open( unit, file=trim(mpp_file(unit)%name), access=acc, form=for, action=act, recl=recl,iostat=ios )
-          else     
+          else
               if( verbose )print '(2(x,a,i6),6(x,a))',      'MPP_OPEN: PE=', pe, &
                    'unit=', unit, trim(mpp_file(unit)%name), 'attributes=', trim(acc), trim(for), trim(pos), trim(act)
               open( unit, file=trim(mpp_file(unit)%name), access=acc, form=for, action=act, position=pos, iostat=ios)
-          end if   
+          end if
 !check if OPEN worked
           inquire( unit,OPENED=mpp_file(unit)%opened )
           if (ios/=0) then
@@ -769,16 +727,17 @@
               else
                   call mpp_error( FATAL, 'MPP_OPEN: error in OPEN for '//trim(mpp_file(unit)%name)//'.' )
               endif
-          endif   
+          endif
           if( .NOT.mpp_file(unit)%opened )call mpp_error( FATAL, 'MPP_OPEN: error in OPEN() statement.' )
       end if
       mpp_file(unit)%action = action_flag
       mpp_file(unit)%format = form_flag
       mpp_file(unit)%access = access_flag
       if( PRESENT(nohdrs) )mpp_file(unit)%nohdrs = nohdrs
-      
+
       if( action_flag.EQ.MPP_WRONLY )then
-          if( form_flag.NE.MPP_NETCDF .AND. access_flag.EQ.MPP_DIRECT )call mpp_write_meta( unit, 'record_length', ival=recl )
+          if( form_flag.NE.MPP_NETCDF .AND. access_flag.EQ.MPP_DIRECT )call mpp_write_meta( unit, &
+            &  'record_length', ival=recl )
 !actual file name
           call mpp_write_meta( unit, 'filename', cval=mpp_file(unit)%name)
 !MPP_IO package version
@@ -805,7 +764,7 @@
              endif
              call mpp_write_meta( unit, 'NumFilesInSet', ival=nfiles)
           end if
-      end if   
+      end if
 
 !----------
 !ug support
@@ -818,7 +777,7 @@
       endif
 !----------
 
-      call mpp_clock_end(mpp_open_clock)              
+      call mpp_clock_end(mpp_open_clock)
       return
     end subroutine mpp_open
 
@@ -846,7 +805,7 @@
       logical :: collect
       integer :: i, j
 
-      call mpp_clock_begin(mpp_close_clock)      
+      call mpp_clock_begin(mpp_close_clock)
       if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_CLOSE: must first call mpp_io_init.' )
       if( unit.EQ.NULLUNIT .OR. unit .EQ. stderr() ) then
          call mpp_clock_end(mpp_close_clock)
@@ -865,22 +824,17 @@
           else
               call mpp_error( FATAL, 'MPP_CLOSE: action must be one of MPP_DELETE or MPP_COLLECT.' )
           end if
-      end if  
+      end if
       if( mpp_file(unit)%fileset.NE.MPP_MULTI )collect = .FALSE.
       if( mpp_file(unit)%opened) then
          if( mpp_file(unit)%format.EQ.MPP_NETCDF )then
 #ifdef use_netCDF
             error = NF_CLOSE(mpp_file(unit)%ncid); call netcdf_err( error, mpp_file(unit) )
-#endif    
+#endif
          else
             close(unit,status=status)
          end if
       endif
-#ifdef SGICRAY
-!this line deleted: since the FILENV is a shared file, this might cause a problem in
-! multi-threaded I/O if one PE does assign -R before another one has opened it.
-!      call ASSIGN( 'assign -R f:'//trim(mpp_file(unit)%name), error )
-#endif
       if ( associated(mpp_file(unit)%Axis) ) then
          do i=1, mpp_file(unit)%ndim
             if ( associated(mpp_file(unit)%Axis(i)%data) ) then
@@ -980,10 +934,10 @@
       call mpp_clock_end(mpp_close_clock)
       return
     end subroutine mpp_close
-    
-    
+
+
     subroutine file_size(fsize, fname, size)
-    
+
     character(len=12), intent(in)    ::fsize
     character(len=128)               ::filesize
     character(len=128), intent(in),optional :: fname
@@ -991,13 +945,13 @@
     integer*4 :: fstat(13)
     integer :: length
     character(len=16)   ::number
-    integer,intent(OUT) :: size 
+    integer,intent(OUT) :: size
     integer*4 ::ierr, stat
     integer   :: tend
     logical   :: there
-    
-    size = 0 
-  
+
+    size = 0
+
     filesize = fsize
 
     length = len(trim(fsize))
@@ -1041,8 +995,6 @@
       endif
 
 return
-    
+
     end subroutine file_size
-
-
-
+!> @}

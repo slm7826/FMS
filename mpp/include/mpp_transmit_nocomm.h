@@ -22,24 +22,20 @@
 !                                                                             !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-    subroutine MPP_TRANSMIT_( put_data, put_len, to_pe, get_data, get_len, from_pe, block, tag, recv_request, send_request )
-!a message-passing routine intended to be reminiscent equally of both MPI and SHMEM
-
-!put_data and get_data are contiguous MPP_TYPE_ arrays
-
-!at each call, your put_data array is put to   to_pe's get_data
-!              your get_data array is got from from_pe's put_data
-!i.e we assume that typically (e.g updating halo regions) each PE performs a put _and_ a get
-
-!special PE designations:
-!      NULL_PE: to disable a put or a get (e.g at boundaries)
-!      ANY_PE:  if remote PE for the put or get is to be unspecific
-!      ALL_PES: broadcast and collect operations (collect not yet implemented)
-
-!ideally we would not pass length, but this f77-style call performs better (arrays passed by address, not descriptor)
-!further, this permits <length> contiguous words from an array of any rank to be passed (avoiding f90 rank conformance check)
-
-!caller is responsible for completion checks (mpp_sync_self) before and after
+!> A message-passing routine intended to be reminiscent equally of both MPI and SHMEM
+!! put_data and get_data are contiguous MPP_TYPE_ arrays
+!!at each call, your put_data array is put to   to_pe's get_data
+!!              your get_data array is got from from_pe's put_data
+!!i.e we assume that typically (e.g updating halo regions) each PE performs a put _and_ a get
+!!special PE designations:
+!!      NULL_PE: to disable a put or a get (e.g at boundaries)
+!!      ANY_PE:  if remote PE for the put or get is to be unspecific
+!!      ALL_PES: broadcast and collect operations (collect not yet implemented)
+!!ideally we would not pass length, but this f77-style call performs better (arrays passed by address, not descriptor)
+!!further, this permits <length> contiguous words from an array of any rank to be passed (avoiding f90 rank conformance check)
+!!caller is responsible for completion checks (mpp_sync_self) before and after
+    subroutine MPP_TRANSMIT_( put_data, put_len, to_pe, get_data, get_len, from_pe, block, tag, recv_request, &
+                            &  send_request )
 
       integer, intent(in) :: put_len, to_pe, get_len, from_pe
       MPP_TYPE_, intent(in)  :: put_data(*)
@@ -50,19 +46,20 @@
 
       integer :: i, outunit
       MPP_TYPE_, allocatable, save :: local_data(:) !local copy used by non-parallel code (no SHMEM or MPI)
-      integer(LONG_KIND),     save :: get_data_addr=-9999
+      integer(i8_kind),     save :: get_data_addr=-9999
       MPP_TYPE_                    :: get_data_local(get_len_nocomm)
       pointer(ptr_get_data, get_data_local)
 
 
       if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_TRANSMIT: You must first call mpp_init.' )
       if( to_pe.EQ.NULL_PE .AND. from_pe.EQ.NULL_PE )return
-      
+
       outunit = stdout()
       if( debug )then
           call SYSTEM_CLOCK(tick)
           write( outunit,'(a,i18,a,i5,a,2i5,2i8)' )&
-               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT begin: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, put_len, get_len
+               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT begin: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, &
+                       &  put_len, get_len
       end if
 
 !do put first and then get
@@ -102,7 +99,7 @@
           call mpp_error( FATAL, 'MPP_TRANSMIT: invalid to_pe.' )
       end if
 
-!do the get: for libSMA, a get means do a wait to ensure put on remote PE is complete
+!do the get
       if( from_pe.GE.0 .AND. from_pe.LT.npes )then
           if( .NOT.allocated(local_data) ) then
              get_data_addr = LOC(get_data)
@@ -125,7 +122,8 @@
       if( debug )then
           call SYSTEM_CLOCK(tick)
           write( outunit,'(a,i18,a,i5,a,2i5,2i8)' )&
-               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT end: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, put_len, get_len
+               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT end: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, &
+                       &  put_len, get_len
       end if
       return
     end subroutine MPP_TRANSMIT_
@@ -151,4 +149,3 @@
 
 !####################################################################################
 #include <mpp_transmit.inc>
-

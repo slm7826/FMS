@@ -1,4 +1,4 @@
-! -*-f90-*- 
+! -*-f90-*-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -17,9 +17,11 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @addtogroup mpp_domains_mod
+!> @{
+    !> Updates data domain of 3D field whose computational domains have been computed
     subroutine MPP_DO_UPDATE_3D_( f_addrs, domain, update, d_type, ke, flags)
-!updates data domain of 3D field whose computational domains have been computed
-      integer(LONG_KIND),         intent(in) :: f_addrs(:,:)
+      integer(i8_kind),         intent(in) :: f_addrs(:,:)
       type(domain2D),             intent(in) :: domain
       type(overlapSpec),          intent(in) :: update
       MPP_TYPE_,                  intent(in) :: d_type  ! creates unique interface
@@ -29,14 +31,14 @@
       MPP_TYPE_ :: field(update%xbegin:update%xend, update%ybegin:update%yend,ke)
       pointer(ptr_field, field)
       integer                     :: update_flags
-      type(overlap_type), pointer :: overPtr => NULL()      
+      type(overlap_type), pointer :: overPtr => NULL()
       character(len=8)            :: text
 
 !equate to mpp_domains_stack
       MPP_TYPE_ :: buffer(size(mpp_domains_stack(:)))
       pointer( ptr, buffer )
       integer :: buffer_pos
-     
+
 !receive domains saved here for unpacking
 !for non-blocking version, could be recomputed
       integer,    allocatable :: msg1(:), msg2(:), msg3(:)
@@ -44,7 +46,6 @@
       integer :: to_pe, from_pe, pos, msgsize
       integer :: n, l_size, l, m, i, j, k
       integer :: is, ie, js, je, tMe, dir
-      integer :: start, start1, start2, index, is1, ie1, js1, je1, ni, nj, total
       integer :: buffer_recv_size, nlist, outunit
       integer :: send_start_pos
       integer :: send_msgsize(MAXLIST)
@@ -79,7 +80,7 @@
       send    = recv
 
       if(debug_message_passing) then
-         nlist = size(domain%list(:))  
+         nlist = size(domain%list(:))
          allocate(msg1(0:nlist-1), msg2(0:nlist-1), msg3(0:nlist-1) )
          msg1 = 0
          msg2 = 0
@@ -193,7 +194,7 @@
                case(ZERO)
                   do l=1,l_size  ! loop over number of fields
                      ptr_field = f_addrs(l, tMe)
-                     do k = 1,ke  
+                     do k = 1,ke
                         do j = js, je
                            do i = is, ie
                               pos = pos + 1
@@ -202,10 +203,10 @@
                         end do
                      end do
                   end do
-               case( MINUS_NINETY ) 
+               case( MINUS_NINETY )
                   do l=1,l_size  ! loop over number of fields
                      ptr_field = f_addrs(l, tMe)
-                     do k = 1,ke  
+                     do k = 1,ke
                         do i = is, ie
                            do j = je, js, -1
                               pos = pos + 1
@@ -214,10 +215,10 @@
                         end do
                      end do
                   end do
-               case( NINETY ) 
+               case( NINETY )
                   do l=1,l_size  ! loop over number of fields
                      ptr_field = f_addrs(l, tMe)
-                     do k = 1,ke  
+                     do k = 1,ke
                         do i = ie, is, -1
                            do j = js, je
                               pos = pos + 1
@@ -226,10 +227,10 @@
                         end do
                      end do
                   end do
-               case( ONE_HUNDRED_EIGHTY ) 
+               case( ONE_HUNDRED_EIGHTY )
                   do l=1,l_size  ! loop over number of fields
                      ptr_field = f_addrs(l, tMe)
-                     do k = 1,ke  
+                     do k = 1,ke
                         do j = je, js, -1
                            do i = ie, is, -1
                               pos = pos + 1
@@ -263,7 +264,7 @@
       call mpp_clock_begin(wait_clock)
       call mpp_sync_self(check=EVENT_RECV)
       call mpp_clock_end(wait_clock)
-      buffer_pos = buffer_recv_size      
+      buffer_pos = buffer_recv_size
 
       call mpp_clock_begin(unpk_clock)
       do m = update%nrecv, 1, -1
@@ -300,3 +301,4 @@
       call mpp_clock_end(wait_clock)
       return
     end subroutine MPP_DO_UPDATE_3D_
+!> @}

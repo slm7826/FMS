@@ -16,6 +16,34 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup horiz_interp_bicubic_mod horiz_interp_bicubic_mod
+!> @ingroup horiz_interp
+!> @brief Delivers methods for bicubic interpolation from a coarse regular grid
+!! on a fine regular grid
+!!
+!> This module delivers methods for bicubic interpolation from a
+!! coarse regular grid on a fine regular grid.
+!! Subroutines
+!!
+!! - @ref bcuint
+!! - @ref bcucof
+!!
+!! are methods taken from
+!!
+!!       W. H. Press, S. A. Teukolski, W. T. Vetterling and B. P. Flannery,
+!!       Numerical Recipies in FORTRAN, The Art of Scientific Computing.
+!!       Cambridge University Press, 1992
+!!
+!! written by
+!!       martin.schmidt@io-warnemuende.de (2004)
+!! revised by
+!!       martin.schmidt@io-warnemuende.de (2004)
+!!
+!! Version 1.0.0.2005-07-06
+!! The module is thought to interact with MOM-4.
+!! Alle benotigten Felder werden extern von MOM verwaltet, da sie
+!! nicht fur alle interpolierten Daten die gleiche Dimension haben mussen.
+
 module horiz_interp_bicubic_mod
 
   use mpp_mod,               only: mpp_error, FATAL, stdout, mpp_pe, mpp_root_pe
@@ -26,38 +54,20 @@ module horiz_interp_bicubic_mod
 
  implicit none
 
-! This module delivers methods for bicubic interpolation from a
-! coarse regular grid on a fine regular grid.
-! Subroutines
-!
-!       bcuint
-!       bcucof
-!
-! are methods taken from
-!
-!       W. H. Press, S. A. Teukolski, W. T. Vetterling and B. P. Flannery,
-!       Numerical Recipies in FORTRAN, The Art of Scientific Computing.
-!       Cambridge University Press, 1992
-!
-! written by
-!       martin.schmidt@io-warnemuende.de (2004)
-! revied by
-!       martin.schmidt@io-warnemuende.de (2004)
-!
-! Version 1.0.0.2005-07-06
-! The module is thought to interact with MOM-4.
-! Alle benotigten Felder werden extern von MOM verwaltet, da sie
-! nicht fur alle interpolierten Daten die gleiche Dimension haben mussen.
-
    private
 
    public  :: horiz_interp_bicubic, horiz_interp_bicubic_new, horiz_interp_bicubic_del, fill_xy
    public  :: horiz_interp_bicubic_init
 
+  !> Creates a new @ref horiz_interp_type for bicubic interpolation.
+  !> @ingroup horiz_interp_bicubic_mod
   interface horiz_interp_bicubic_new
     module procedure horiz_interp_bicubic_new_1d
     module procedure horiz_interp_bicubic_new_1d_s
   end interface
+
+!> @addtogroup horiz_interp_bicubic_mod
+!> @{
 
 ! Include variable "version" to be written to log file.
 #include<file_version.h>
@@ -77,10 +87,6 @@ module horiz_interp_bicubic_mod
 !     dff_xy : x-y-derivative of fc at the fine grid
 
 
-   logical            :: initialized_bicubic = .false.
-
-
-   real, save         :: missing = -1e33
    real               :: tpi
 
    interface fill_xy
@@ -90,15 +96,7 @@ module horiz_interp_bicubic_mod
 
    contains
 
-  !#######################################################################
-  !  <SUBROUTINE NAME="horiz_interp_bicubic_init">
-  !  <OVERVIEW>
-  !     writes version number to logfile.out
-  !  </OVERVIEW>
-  !  <DESCRIPTION>
-  !     writes version number to logfile.out
-  !  </DESCRIPTION>
-
+  !> @brief Initializes module and writes version number to logfile.out
   subroutine horiz_interp_bicubic_init
 
      if(module_is_initialized) return
@@ -108,63 +106,29 @@ module horiz_interp_bicubic_mod
 
   end subroutine horiz_interp_bicubic_init
 
-  !  </SUBROUTINE>
-
   !#######################################################################
-  ! <SUBROUTINE NAME="horiz_interp_bicubic_new">
 
-  !   <OVERVIEW>
-  !      Initialization routine.
-  !   </OVERVIEW>
-  !   <DESCRIPTION>
-  !      Allocates space and initializes a derived-type variable
-  !      that contains pre-computed interpolation indices and weights.
-  !   </DESCRIPTION>
-  !   <TEMPLATE>
-  !     call horiz_interp_bicubic_new ( Interp, lon_in, lat_in, lon_out, lat_out, verbose_bicubic, src_modulo )
-
-  !   </TEMPLATE>
-  !
-  !   <IN NAME="lon_in" TYPE="real, dimension(:,:)" UNITS="radians">
-  !      Longitude (in radians) for source data grid.
-  !   </IN>
-
-  !   <IN NAME="lat_in" TYPE="real, dimension(:,:)" UNITS="radians">
-  !      Latitude (in radians) for source data grid.
-  !   </IN>
-
-  !   <IN NAME="lon_out" TYPE="real, dimension(:,:)" UNITS="radians" >
-  !      Longitude (in radians) for source data grid.
-  !   </IN>
-
-  !   <IN NAME="lat_out" TYPE="real, dimension(:,:)" UNITS="radians" >
-  !      Latitude (in radians) for source data grid.
-  !   </IN>
-
-  !   <IN NAME="src_modulo" TYPE="logical, optional">
-  !      logical variable to indicate if the boundary condition along zonal boundary
-  !      is cyclic or not. When true, the zonal boundary condition is cyclic.
-  !   </IN>
-
-  !   <IN NAME="verbose_bicubic" TYPE="integer, optional" >
-  !      flag for the amount of print output.
-  !   </IN>
-
-  !   <INOUT NAME="Interp" TYPE="type(horiz_interp_type)" >
-  !      A derived-type variable containing indices and weights used for subsequent
-  !      interpolations. To reinitialize this variable for a different grid-to-grid
-  !      interpolation you must first use the "horiz_interp_bicubic_del" interface.
-  !   </INOUT>
-
+  !> @brief Creates a new @ref horiz_interp_type
+  !!
+  !> Allocates space and initializes a derived-type variable
+  !! that contains pre-computed interpolation indices and weights.
   subroutine horiz_interp_bicubic_new_1d_s ( Interp, lon_in, lat_in, lon_out, lat_out, &
        verbose, src_modulo )
 
     !-----------------------------------------------------------------------
-    type(horiz_interp_type), intent(inout) :: Interp
-    real, intent(in),  dimension(:)        :: lon_in , lat_in
-    real, intent(in),  dimension(:,:)      :: lon_out, lat_out
-    integer, intent(in),          optional :: verbose
-    logical, intent(in),          optional :: src_modulo
+    type(horiz_interp_type), intent(inout) :: Interp !< A derived-type variable containing indices
+                                       !! and weights used for subsequent interpolations. To
+                                       !! reinitialize this variable for a different grid-to-grid
+                                       !! interpolation you must first use the
+                                       !! @ref horiz_interp_bicubic_del interface.
+    real, intent(in),  dimension(:)        :: lon_in !< Longitude (radians) for source data grid
+    real, intent(in),  dimension(:)        :: lat_in !< Latitude (radians) for source data grid
+    real, intent(in),  dimension(:,:)      :: lon_out !< Longitude (radians) for output data grid
+    real, intent(in),  dimension(:,:)      :: lat_out !< Latitude (radians) for output data grid
+    integer, intent(in),          optional :: verbose !< flag for print output amount
+    logical, intent(in),          optional :: src_modulo !< indicates if the boundary condition along
+                                       !! zonal boundary is cyclic or not. Zonal boundary condition
+                                       !!is cyclic when true
     integer                                :: i, j, ip1, im1, jp1, jm1
     logical                                :: src_is_modulo
     integer                                :: nlon_in, nlat_in, nlon_out, nlat_out
@@ -299,14 +263,22 @@ module horiz_interp_bicubic_mod
           else
              Interp%rat_y(i,j) = (yz - Interp%lat_in(jcl))/(Interp%lat_in(jcu) - Interp%lat_in(jcl))
           endif
-!          if(yz.gt.Interp%lat_in(jcu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s: yf < ycl, no valid boundary point')
-!          if(yz.lt.Interp%lat_in(jcl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s: yf > ycu, no valid boundary point')
-!          if(xz.gt.Interp%lon_in(icu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s: xf < xcl, no valid boundary point')
-!          if(xz.lt.Interp%lon_in(icl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s: xf > xcu, no valid boundary point')
+!          if(yz.gt.Interp%lat_in(jcu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s:
+!          yf < ycl, no valid boundary point')
+!          if(yz.lt.Interp%lat_in(jcl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s:
+!          yf > ycu, no valid boundary point')
+!          if(xz.gt.Interp%lon_in(icu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s:
+!          xf < xcl, no valid boundary point')
+!          if(xz.lt.Interp%lon_in(icl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d_s:
+!          xf > xcu, no valid boundary point')
         enddo
       enddo
   end subroutine horiz_interp_bicubic_new_1d_s
-  ! </SUBROUTINE>
+
+  !> @brief Creates a new @ref horiz_interp_type
+  !!
+  !> Allocates space and initializes a derived-type variable
+  !! that contains pre-computed interpolation indices and weights.
   subroutine horiz_interp_bicubic_new_1d ( Interp, lon_in, lat_in, lon_out, lat_out, &
        verbose, src_modulo )
 
@@ -440,16 +412,22 @@ module horiz_interp_bicubic_mod
           else
              Interp%rat_y(i,j) = (yz - Interp%lat_in(jcl))/(Interp%lat_in(jcu) - Interp%lat_in(jcl))
           endif
-!          if(yz.gt.lat_in(jcu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: yf < ycl, no valid boundary point')
-!          if(yz.lt.lat_in(jcl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: yf > ycu, no valid boundary point')
-!          if(xz.gt.lon_in(icu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: xf < xcl, no valid boundary point')
-!          if(xz.lt.lon_in(icl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: xf > xcu, no valid boundary point')
+!          if(yz.gt.lat_in(jcu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: yf <
+!          ycl, no valid boundary point')
+!          if(yz.lt.lat_in(jcl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: yf >
+!          ycu, no valid boundary point')
+!          if(xz.gt.lon_in(icu)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: xf <
+!          xcl, no valid boundary point')
+!          if(xz.lt.lon_in(icl)) call mpp_error(FATAL, ' horiz_interp_bicubic_new_1d: xf >
+!          xcu, no valid boundary point')
         enddo
       enddo
 
   end subroutine horiz_interp_bicubic_new_1d
 
-  subroutine horiz_interp_bicubic( Interp, data_in, data_out, verbose, mask_in, mask_out, missing_value, missing_permit)
+  !> @brief Perform bicubic horizontal interpolation
+  subroutine horiz_interp_bicubic( Interp, data_in, data_out, verbose, mask_in, mask_out, missing_value, &
+                                 &  missing_permit)
     type (horiz_interp_type), intent(in)        :: Interp
     real, intent(in),  dimension(:,:)           :: data_in
     real, intent(out), dimension(:,:)           :: data_out
@@ -602,8 +580,8 @@ module horiz_interp_bicubic_mod
 
 !-----------------------------------------------------------------------
 
+!> find the lower neighbour of xf in field xc, return is the index
     function indl(xc, xf)
-! find the lower neighbour of xf in field xc, return is the index
     real, intent(in) :: xc(1:)
     real, intent(in) :: xf
     integer             :: indl
@@ -619,8 +597,8 @@ module horiz_interp_bicubic_mod
 
 !-----------------------------------------------------------------------
 
+!> find the upper neighbour of xf in field xc, return is the index
     function indu(xc, xf)
-! find the upper neighbour of xf in field xc, return is the index
     real, intent(in) :: xc(1:)
     real, intent(in) :: xf
     integer             :: indu
@@ -769,3 +747,5 @@ module horiz_interp_bicubic_mod
   end subroutine horiz_interp_bicubic_del
 
 end module horiz_interp_bicubic_mod
+!> @}
+! close documentation

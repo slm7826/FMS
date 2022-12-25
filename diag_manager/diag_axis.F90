@@ -16,25 +16,24 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup diag_axis_mod diag_axis_mod
+!> @ingroup diag_manager
+!> @brief An integral part of @ref diag_manager_mod. It helps to create axis IDs
+!! that are used in @ref register_diag_field.
+!!
+!> @author Seth Underwood
+!!
+!! Users first create axis ID by calling diag_axis_init, then use this axis ID in
+!! register_diag_field.
 
+!> @addtogroup diag_axis_mod
+!> @{
 MODULE diag_axis_mod
-#include <fms_platform.h>
-  ! <CONTACT EMAIL="seth.underwood@noaa.gov">
-  !   Seth Underwood
-  ! </CONTACT>
-
-  ! <OVERVIEW> <TT>diag_axis_mod</TT> is an integral part
-  !   of diag_manager_mod. It helps to create axis IDs
-  !   that are used in register_diag_field.
-  ! </OVERVIEW>
-
-  ! <DESCRIPTION> Users first create axis ID by calling
-  !   diag_axis_init, then use this axis ID in
-  !   register_diag_field.
-  ! </DESCRIPTION>
+use platform_mod
 
   USE mpp_domains_mod, ONLY: domainUG, domain1d, domain2d, mpp_get_compute_domain,&
        & mpp_get_domain_components, null_domain1d, null_domain2d, null_domainUG,&
+       & NORTH, EAST, CENTER, &
        & OPERATOR(.NE.), mpp_get_global_domain, mpp_get_domain_name
   USE fms_mod, ONLY: error_mesg, write_version_number, lowercase, uppercase,&
        & fms_error_handler, FATAL, NOTE
@@ -54,51 +53,40 @@ MODULE diag_axis_mod
        & get_tile_count, get_axes_shift, get_diag_axis_name,&
        & get_axis_num, get_diag_axis_domain_name, diag_axis_add_attribute,&
        & get_domainUG, axis_compatible_check, axis_is_compressed, &
-       & get_compressed_axes_ids, get_axis_reqfld
+       & get_compressed_axes_ids, get_axis_reqfld, &
+       & NORTH, EAST, CENTER
 
-  ! Module variables
-  ! Parameters
-  ! Include variable "version" to be written to log file.
+  ! Include variable "version" to be written to log file
 #include<file_version.h>
 
 !----------
-!ug support
-  integer(INT_KIND),parameter,public :: DIAG_AXIS_NODOMAIN = 0
-  integer(INT_KIND),parameter,public :: DIAG_AXIS_2DDOMAIN = 1
-  integer(INT_KIND),parameter,public :: DIAG_AXIS_UGDOMAIN = 2
+  integer(I4_KIND),parameter,public :: DIAG_AXIS_NODOMAIN = 0 !< For unstructured grid support
+  integer(I4_KIND),parameter,public :: DIAG_AXIS_2DDOMAIN = 1 !< For unstructured grid support
+  integer(I4_KIND),parameter,public :: DIAG_AXIS_UGDOMAIN = 2 !< For unstructured grid support
 !----------
 
-  ! counter of number of axes defined
-  INTEGER, DIMENSION(:), ALLOCATABLE :: num_subaxes
+  INTEGER, DIMENSION(:), ALLOCATABLE :: num_subaxes !< counter of number of axes defined
   INTEGER :: num_def_axes = 0
 
-  ! storage for axis set names
-  CHARACTER(len=128), DIMENSION(:), ALLOCATABLE, SAVE :: Axis_sets
+  CHARACTER(len=128), DIMENSION(:), ALLOCATABLE, SAVE :: Axis_sets !< storage for axis set names
   INTEGER :: num_axis_sets = 0
 
-  ! ---- global storage for all defined axes ----
-  TYPE(diag_axis_type), ALLOCATABLE, SAVE :: Axes(:)
+  TYPE(diag_axis_type), ALLOCATABLE, SAVE :: Axes(:) !< global storage for all defined axes
   LOGICAL :: module_is_initialized = .FALSE.
 
-  ! <INTERFACE NAME="diag_axis_add_attribute">
-  !   <OVERVIEW>
-  !     Add a attribute to the diag axis
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE diag_axis_add_attribute(diag_axis_id, att_name, att_value)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Add an arbitrary attribute and value to the diagnostic axis.  Any number
-  !     of attributes can be added to a given axis.  All attribute addition must
-  !     be done before first <TT>send_data</TT> call.
-  !
-  !     If a real or integer attribute is already defined, a FATAL error will be called.
-  !     If a character attribute is already defined, then it will be prepended to the
-  !     existing attribute value.
-  !   </DESCRIPTION>
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="REAL|INTEGER|CHARACTER(len=*)" />
+  !> @}
+
+  !> @brief Add an arbitrary attribute and value to the diagnostic axis.
+  !!
+  !> Any number of attributes can be added to a given axis.  All attribute addition must
+  !! be done before first <TT>send_data</TT> call.<br>
+  !!
+  !! If a real or integer attribute is already defined, a FATAL error will be called.
+  !! If a character attribute is already defined, then it will be prepended to the
+  !! existing attribute value.
+  !! <br>Example usage:
+  !! @code{.F90} call diag_axis_add_attribute(diag_axis_id, att_name, att_value) @endcode
+  !> @ingroup diag_axis_mod
   INTERFACE diag_axis_add_attribute
      MODULE PROCEDURE diag_axis_add_attribute_scalar_r
      MODULE PROCEDURE diag_axis_add_attribute_scalar_i
@@ -106,65 +94,37 @@ MODULE diag_axis_mod
      MODULE PROCEDURE diag_axis_add_attribute_r1d
      MODULE PROCEDURE diag_axis_add_attribute_i1d
   END INTERFACE diag_axis_add_attribute
-  ! </INTERFACE>
+
+  !> @addtogroup diag_axis_mod
+  !> @{
 
 CONTAINS
 
-  ! <FUNCTION NAME="diag_axis_init">
-  !   <OVERVIEW>
-  !     Initialize the axis, and return the axis ID.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION diag_axis_init(name, data, units, cart_name, long_name,
-  !           direction, set_name, edges, Domain, Domain2, aux, req, tile_count)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     <TT>diag_axis_init</TT> initializes an axis and returns the axis ID that
-  !     is to be used with <TT>register_diag_field</TT>.  This function also
-  !     increments the axis counter and fills in the axes
-  !   </DESCRIPTION>
-  !   <IN NAME="name" TYPE="CHARACTER(len=*)">Short name for axis</IN>
-  !   <IN NAME="data" TYPE="REAL, DIMENSION(:)">Array of coordinate values</IN>
-  !   <IN NAME="units" TYPE="CHARACTER(len=*)">Units for the axis</IN>
-  !   <IN NAME="cart_name" TYPE="CHARACTER(len=*)">
-  !     Cartesian axis ("X", "Y", "Z", "T")
-  !   </IN>
-  !   <IN NAME="direction" TYPE="INTEGER, OPTIONAL" DEFAULT="0">
-  !     Indicates the direction of the axis:
-  !     <UL>
-  !       <LI>Up if +1</LI>
-  !       <LI>Down if -1</LI>
-  !       <LI>Neither up or down if 0</LI>
-  !     </UL>
-  !   </IN>
-  !   <IN NAME="long_name" TYPE="CHARACTER(len=*), OPTIONAL" DEFAULT="name">
-  !     Long name for the axis.
-  !   </IN>
-  !   <IN NAME="edges" TYPE="INTEGER, OPTIONAL">
-  !     Axis ID for the previously defined "edges axis"
-  !   </IN>
-  !   <IN NAME="Domain" TYPE="TYPE(domain1d), OPTIONAL" />
-  !   <IN NAME="Domain2" TYPE="TYPE(domain2d), OPTIONAL" />
-  !   <IN NAME="aux" TYPE="CHARACTER(len=*), OPTIONAL">
-  !     Auxiliary name, can only be <TT>geolon_t</TT> or <TT>geolat_t</TT>
-  !   </IN>
-  !   <IN NAME="req" TYPE="CHARACTER(len=*), OPTIONAL">
-  !     Required field names.
-  !   </IN>
-  !   <IN NAME="tile_count" TYPE="INTEGER, OPTIONAL" />
+  !> @brief Initialize the axis, and return the axis ID.
+  !!
+  !> <TT>diag_axis_init</TT> initializes an axis and returns the axis ID that
+  !! is to be used with <TT>register_diag_field</TT>.  This function also
+  !! increments the axis counter and fills in the axes
+  !!
+  !! @return integer axis ID
   INTEGER FUNCTION diag_axis_init(name, DATA, units, cart_name, long_name, direction,&
-       & set_name, edges, Domain, Domain2, DomainU, aux, req, tile_count)
-    CHARACTER(len=*), INTENT(in) :: name
-    REAL, DIMENSION(:), INTENT(in) :: DATA
-    CHARACTER(len=*), INTENT(in) :: units
-    CHARACTER(len=*), INTENT(in) :: cart_name
-    CHARACTER(len=*), INTENT(in), OPTIONAL :: long_name, set_name
-    INTEGER, INTENT(in), OPTIONAL :: direction, edges
+       & set_name, edges, Domain, Domain2, DomainU, aux, req, tile_count, domain_position )
+    CHARACTER(len=*), INTENT(in) :: name !< Short name for axis
+    CLASS(*), DIMENSION(:), INTENT(in) :: DATA !< Array of coordinate values
+    CHARACTER(len=*), INTENT(in) :: units !< Units for the axis
+    CHARACTER(len=*), INTENT(in) :: cart_name !< Cartesian axis ("X", "Y", "Z", "T")
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: long_name !< Long name for the axis.
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: set_name
+    INTEGER, INTENT(in), OPTIONAL :: direction !< Indicates the direction of the axis
+    INTEGER, INTENT(in), OPTIONAL :: edges !< Axis ID for the previously defined "edges axis"
     TYPE(domain1d), INTENT(in), OPTIONAL :: Domain
     TYPE(domain2d), INTENT(in), OPTIONAL :: Domain2
     TYPE(domainUG), INTENT(in), OPTIONAL :: DomainU
-    CHARACTER(len=*), INTENT(in), OPTIONAL :: aux, req
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: aux !< Auxiliary name, can only be <TT>geolon_t</TT> or <TT>geolat_t</TT>
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: req !< Required field names.
     INTEGER, INTENT(in), OPTIONAL :: tile_count
+    INTEGER, INTENT(in), OPTIONAL :: domain_position
+
 
     TYPE(domain1d) :: domain_x, domain_y
     INTEGER :: ierr, axlen
@@ -255,7 +215,7 @@ CONTAINS
        Axes(diag_axis_init)%cart_name = TRIM(uppercase(cart_name))
     ELSE
        ! <ERROR STATUS="FATAL">Invalid cart_name name.</ERROR>
-       CALL error_mesg('diag_axis_mod::diag_axis_init', 'Invalid cart_name name.', FATAL)
+       CALL error_mesg('diag_axis_mod::diag_axis_init', 'Invalid cart_name name. '//TRIM(uppercase(cart_name)), FATAL)
     END IF
 
     !---- allocate storage for coordinate values of axis ----
@@ -268,7 +228,15 @@ CONTAINS
 
     ! Initialize Axes(diag_axis_init)
     Axes(diag_axis_init)%name   = TRIM(name)
-    Axes(diag_axis_init)%data   = DATA(1:axlen)
+    SELECT TYPE (DATA)
+    TYPE IS (real(kind=r4_kind))
+       Axes(diag_axis_init)%data = DATA(1:axlen)
+    TYPE IS (real(kind=r8_kind))
+       Axes(diag_axis_init)%data = real(DATA(1:axlen))
+    CLASS DEFAULT
+       CALL error_mesg('diag_axis_mod::diag_axis_init',&
+            & 'The axis data is not one of the supported types of real(kind=4) or real(kind=8)', FATAL)
+    END SELECT
     Axes(diag_axis_init)%units  = units
     Axes(diag_axis_init)%length = axlen
     Axes(diag_axis_init)%set    = set
@@ -296,7 +264,16 @@ CONTAINS
     ELSE
        Axes(diag_axis_init)%req = 'none'
     END IF
-
+    IF ( PRESENT(domain_position) ) THEN
+       if (domain_position == NORTH .or. domain_position == EAST .or. domain_position == CENTER) then
+          Axes(diag_axis_init)%domain_position = domain_position
+       else
+          CALL error_mesg('diag_axis_mod::diag_axis_init', "Position must be NORTH, EAST, or CENTER" ,&
+                         FATAL)
+       endif
+    ELSE
+       Axes(diag_axis_init)%domain_position = CENTER
+    END IF
 
     !---- axis direction (-1, 0, or +1) ----
     IF ( PRESENT(direction) )THEN
@@ -385,34 +362,21 @@ CONTAINS
     module_is_initialized = .TRUE.
 
   END FUNCTION diag_axis_init
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="diag_subaxes_init">
-  !   <OVERVIEW>
-  !     Create a subaxis on a parent axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION diag_subaxes_init(axis, subdata, start_indx, end_indx,
-  !           domain_1d, domain_2d)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Given the ID of a parent axis, create a subaxis and fill it with data,
-  !     and return the ID of the corresponding subaxis.
-  !
-  !     The subaxis is defined on the parent axis from <TT>start_indx</TT>
-  !     to <TT>end_indx</TT>.
-  !   </DESCRIPTION>
-  !   <IN NAME="axis" TYPE="INTEGER">ID of the parent axis</IN>
-  !   <IN NAME="subdata" TYPE="REAL, DIMENSION(:)">Data of the subaxis</IN>
-  !   <IN NAME="start_indx" TYPE="INTEGER">Start index of the subaxis</IN>
-  !   <IN NAME="end_indx" TYPE="INTEGER">End index of the subaxis</IN>
-  !   <IN NAME="domain_1d" TYPE="TYPE(domain1d), OPTIONAL" />
-  !   <IN NAME="domain_2d" TYPE="TYPE(domain2d), OPTIONAL" />
+  !> @brief Create a subaxis on a parent axis.
+  !!
+  !> Given the ID of a parent axis, create a subaxis and fill it with data,
+  !!     and return the ID of the corresponding subaxis.
+  !!
+  !!     The subaxis is defined on the parent axis from <TT>start_indx</TT>
+  !!     to <TT>end_indx</TT>.
+  !!
+  !! @return Integer ID of the corresponding subaxis.
   INTEGER FUNCTION diag_subaxes_init(axis, subdata, start_indx, end_indx, domain_2d)
-    INTEGER, INTENT(in) :: axis
-    REAL, DIMENSION(:), INTENT(in) :: subdata
-    INTEGER, INTENT(in) :: start_indx
-    INTEGER, INTENT(in) :: end_indx
+    INTEGER, INTENT(in) :: axis !< ID of the parent axis
+    REAL, DIMENSION(:), INTENT(in) :: subdata !< Data of the subaxis
+    INTEGER, INTENT(in) :: start_indx !< Start index of the subaxis
+    INTEGER, INTENT(in) :: end_indx !< End index of the subaxis
     TYPE(domain2d), INTENT(in), OPTIONAL  :: domain_2d
 
     INTEGER :: i, nsub_axis, direction
@@ -491,48 +455,20 @@ CONTAINS
        END IF
     END IF
   END FUNCTION diag_subaxes_init
-  ! </FUNCTION>
-
-  ! <SUBROUTINE NAME="get_diag_axis">
-  !   <OVERVIEW>
-  !     Return information about the axis with index ID
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_diag_axis(id, name, units, long_name, cart_name,
-  !          direction, edges, Domain, data, num_attributes, attributes)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return information about the axis with index ID
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-  !   <OUT NAME="name" TYPE="CHARACTER(len=*)">Short name for axis</OUT>
-  !   <OUT NAME="units" TYPE="CHARACTER(len=*)">Units for axis</OUT>
-  !   <OUT NAME="long_name" TYPE="CHARACTER(len=*)">Long name for axis</OUT>
-  !   <OUT NAME="cart_name" TYPE="CHARACTER(len=*)">
-  !     Cartesian axis ("x", "y", "z", "t", "u").
-  !   </OUT>
-  !   <OUT NAME="direction" TYPE="INTEGER">
-  !     Direction of data. (See <TT>diag_axis_init</TT> for a description of
-  !     allowed values)
-  !   </OUT>
-  !   <OUT NAME="edges" TYPE="INTEGER">
-  !     Axis ID for the previously defined "edges axis".
-  !   </OUT>
-  !   <OUT NAME="Domain" TYPE="TYPE(domain1d)" />
-  !   <OUT NAME="DomainU" TYPE="TYPE(domainUG)" />
-  !   <OUT NAME="data" TYPE="REAL, DIMENSION(:)">
-  !     Array of coordinate values for this axis.
-  !   </OUT>
+  !> @brief Return information about the axis with index ID
   SUBROUTINE get_diag_axis(id, name, units, long_name, cart_name,&
-       & direction, edges, Domain, DomainU, DATA, num_attributes, attributes)
+       & direction, edges, Domain, DomainU, DATA, num_attributes, attributes, domain_position)
     CHARACTER(len=*), INTENT(out) :: name, units, long_name, cart_name
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
     TYPE(domain1d), INTENT(out) :: Domain
     TYPE(domainUG), INTENT(out) :: DomainU
-    INTEGER, INTENT(out) :: direction, edges
-    REAL, DIMENSION(:), INTENT(out) :: DATA
+    INTEGER, INTENT(out) :: direction !< Direction of data. (See <TT>@ref diag_axis_init</TT> for a description of
+                                      !! allowed values)
+    INTEGER, INTENT(out) :: edges !< Axis ID for the previously defined "edges axis".
+    CLASS(*), DIMENSION(:), INTENT(out) :: DATA !< Array of coordinate values for this axis.
     INTEGER, INTENT(out), OPTIONAL :: num_attributes
     TYPE(diag_atttype), ALLOCATABLE, DIMENSION(:), INTENT(out), OPTIONAL :: attributes
+    INTEGER, INTENT(out), OPTIONAL :: domain_position
 
     INTEGER :: i, j, istat
 
@@ -545,17 +481,26 @@ CONTAINS
     edges     = Axes(id)%edges
     Domain    = Axes(id)%Domain
     DomainU   = Axes(id)%DomainUG
+    if (present(domain_position)) domain_position = Axes(id)%domain_position
     IF ( Axes(id)%length > SIZE(DATA(:)) ) THEN
        ! <ERROR STATUS="FATAL">array data is too small.</ERROR>
        CALL error_mesg('diag_axis_mod::get_diag_axis', 'array data is too small', FATAL)
     ELSE
-       DATA(1:Axes(id)%length) = Axes(id)%data(1:Axes(id)%length)
+       SELECT TYPE (DATA)
+       TYPE IS (real(kind=r4_kind))
+          DATA(1:Axes(id)%length) = real(Axes(id)%data(1:Axes(id)%length), kind=r4_kind)
+       TYPE IS (real(kind=r8_kind))
+          DATA(1:Axes(id)%length) = Axes(id)%data(1:Axes(id)%length)
+       CLASS DEFAULT
+          CALL error_mesg('diag_axis_mod::get_diag_axis',&
+               & 'The axis data is not one of the supported types of real(kind=4) or real(kind=8)', FATAL)
+       END SELECT
     END IF
     IF ( PRESENT(num_attributes) ) THEN
        num_attributes = Axes(id)%num_attributes
     END IF
     IF ( PRESENT(attributes) ) THEN
-       IF ( _ALLOCATED(Axes(id)%attributes) ) THEN
+       IF ( allocated(Axes(id)%attributes) ) THEN
           IF ( ALLOCATED(attributes) ) THEN
              ! If allocate, make sure attributes is large enough to hold Axis(id)%attributes
              IF ( Axes(id)%num_attributes .GT. SIZE(attributes(:)) ) THEN
@@ -570,10 +515,10 @@ CONTAINS
           END IF
           DO i=1, Axes(id)%num_attributes
              ! Unallocate all att arrays in preparation for new data
-             IF ( _ALLOCATED(attributes(i)%fatt) ) THEN
+             IF ( allocated(attributes(i)%fatt) ) THEN
                 DEALLOCATE(attributes(i)%fatt)
              END IF
-             IF ( _ALLOCATED(attributes(i)%iatt) ) THEN
+             IF ( allocated(attributes(i)%iatt) ) THEN
                 DEALLOCATE(attributes(i)%iatt)
              END IF
 
@@ -583,20 +528,22 @@ CONTAINS
              attributes(i)%name = Axes(id)%attributes(i)%name
              attributes(i)%catt = Axes(id)%attributes(i)%catt
              ! Allocate fatt arrays (if needed), and copy in data
-             IF ( _ALLOCATED(Axes(id)%attributes(i)%fatt) ) THEN
+             IF ( allocated(Axes(id)%attributes(i)%fatt) ) THEN
                 ALLOCATE(attributes(i)%fatt(SIZE(Axes(id)%attributes(i)%fatt(:))), STAT=istat)
                 IF ( istat .NE. 0 ) THEN
-                   CALL error_mesg('diag_axis_mod::get_diag_axis', 'Unable to allocate memory for attribute%fatt', FATAL)
+                   CALL error_mesg('diag_axis_mod::get_diag_axis', &
+                                  &  'Unable to allocate memory for attribute%fatt', FATAL)
                 END IF
                 DO j=1, SIZE(attributes(i)%fatt(:))
                    attributes(i)%fatt(j) = Axes(id)%attributes(i)%fatt(j)
                 END DO
              END IF
              ! Allocate iatt arrays (if needed), and copy in data
-             IF ( _ALLOCATED(Axes(id)%attributes(i)%iatt) ) THEN
+             IF ( allocated(Axes(id)%attributes(i)%iatt) ) THEN
                 ALLOCATE(attributes(i)%iatt(SIZE(Axes(id)%attributes(i)%iatt(:))), STAT=istat)
                 IF ( istat .NE. 0 ) THEN
-                   CALL error_mesg('diag_axis_mod::get_diag_axis', 'Unable to allocate memory for attribute%iatt', FATAL)
+                   CALL error_mesg('diag_axis_mod::get_diag_axis', &
+                                  &  'Unable to allocate memory for attribute%iatt', FATAL)
                 END IF
                 DO j=1, SIZE(attributes(i)%iatt(:))
                    attributes(i)%iatt(j) = Axes(id)%attributes(i)%iatt(j)
@@ -606,44 +553,20 @@ CONTAINS
        END IF
     END IF
   END SUBROUTINE get_diag_axis
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="get_diag_axis_cart">
-  !   <OVERVIEW>
-  !     Return the axis cartesian.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_diag_axis_cart(id, cart_name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the axis cartesian ('X', 'Y', 'Z' or 'T') for the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-  !   <OUT NAME="cart_name" TYPE="CHARACTER(len=*)">Cartesian axis</OUT>
+  !> @brief Return the axis cartesian.
   SUBROUTINE get_diag_axis_cart(id, cart_name)
-    INTEGER, INTENT(in)           :: id
-    CHARACTER(len=*), INTENT(out) :: cart_name
+    INTEGER, INTENT(in)           :: id !< Axis ID
+    CHARACTER(len=*), INTENT(out) :: cart_name !< Cartesian axis
 
     CALL valid_id_check(id, 'get_diag_axis_cart')
     cart_name = Axes(id)%cart_name
   END SUBROUTINE get_diag_axis_cart
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="get_diag_axis_data">
-  !   <OVERVIEW>
-  !     Return the axis data.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_diag_axis_data(id, data)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the axis data for the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-  !   <OUT NAME="data" TYPE="REAL, DIMENSION(:)">Axis data</OUT>
+  !> @brief Return the axis data.
   SUBROUTINE get_diag_axis_data(id, DATA)
-    INTEGER, INTENT(in) :: id
-    REAL, DIMENSION(:), INTENT(out) :: DATA
+    INTEGER, INTENT(in) :: id !< Axis ID
+    REAL, DIMENSION(:), INTENT(out) :: DATA !< Axis data
 
     CALL valid_id_check(id, 'get_diag_axis_data')
     IF (Axes(id)%length > SIZE(DATA(:))) THEN
@@ -653,64 +576,29 @@ CONTAINS
        DATA(1:Axes(id)%length) = Axes(id)%data
     END IF
   END SUBROUTINE get_diag_axis_data
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="get_diag_axis_name">
-  !   <OVERVIEW>
-  !     Return the short name of the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_diag_axis_name (id, name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the short name for the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-  !   <OUT NAME="name" TYPE="CHARACTER(len=*)">Axis short name</OUT>
+  !> @brief Return the short name of the axis.
   SUBROUTINE get_diag_axis_name(id, name)
-    INTEGER         , INTENT(in)  :: id
-    CHARACTER(len=*), INTENT(out) :: name
+    INTEGER         , INTENT(in)  :: id !< Axis ID
+    CHARACTER(len=*), INTENT(out) :: name !< Axis short name
 
     CALL valid_id_check(id, 'get_diag_axis_name')
     name = Axes(id)%name
   END SUBROUTINE get_diag_axis_name
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="get_diag_axis_domain_name">
-  !   <OVERVIEW>
-  !     Return the name of the axis' domain
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_diag_axis_domain_name(id, name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Retruns the name of the axis' domain.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-  !   <OUT NAME="name" TYPE="CHARACTER(len=*)">Axis' domain name</OUT>
+  !> @brief Return the name of the axis' domain
   SUBROUTINE get_diag_axis_domain_name(id, name)
-    INTEGER, INTENT(in) :: id
-    CHARACTER(len=*), INTENT(out) :: name
+    INTEGER, INTENT(in) :: id !< Axis ID
+    CHARACTER(len=*), INTENT(out) :: name !< Axis' domain name
 
     CALL valid_id_check(id, 'get_diag_axis_domain_name')
     name = mpp_get_domain_name(Axes(id)%domain2)
   END SUBROUTINE get_diag_axis_domain_name
-  ! </SUBROUTINE>
 
-  ! <FUNCTION NAME="get_axis_length">
-  !   <OVERVIEW>
-  !     Return the length of the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION get_axis_length(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the length of the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Return the length of the axis.
+  !> @return length of axis as an integer
   INTEGER FUNCTION get_axis_length(id)
-    INTEGER, INTENT(in) :: id
-
+    INTEGER, INTENT(in) :: id !< Axis ID
     INTEGER :: length
 
     CALL valid_id_check(id, 'get_axis_length')
@@ -722,81 +610,39 @@ CONTAINS
        get_axis_length = Axes(id)%length
     END IF
   END FUNCTION get_axis_length
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_axis_aux">
-  !   <OVERVIEW>
-  !     Return the auxiliary name for the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     CHARACTER(len=128) FUNCTION get_axis_aux(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Returns the auxiliary name for the axis.  The only possible values for
-  !     the auxiliary names is <TT>geolon_t</TT> or <TT>geolat_t</TT>.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Return the auxiliary name for the axis.
+  !! @return auxiliary name for the axis
   CHARACTER(len=128) FUNCTION get_axis_aux(id)
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
 
     CALL valid_id_check(id, 'get_axis_aux')
     get_axis_aux =  Axes(id)%aux
   END FUNCTION get_axis_aux
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_axis_reqfld">
-  !   <OVERVIEW>
-  !     Return the required field names for the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     CHARACTER(len=128) FUNCTION get_axis_reqfld(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Returns the required field names for the axis.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Return the required field names for the axis.
+  !! @return required field names for the axis
   CHARACTER(len=128) FUNCTION get_axis_reqfld(id)
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
 
     CALL valid_id_check(id, 'get_axis_reqfld')
     get_axis_reqfld =  Axes(id)%req
   END FUNCTION get_axis_reqfld
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_axis_global_length">
-  !   <OVERVIEW>
-  !     Return the global length of the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION get_axis_global_length (id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Returns the global length of the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Return the global length of the axis.
+  !! @return global length of the axis
   INTEGER FUNCTION get_axis_global_length(id)
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
 
     CALL valid_id_check(id, 'get_axis_global_length')
     get_axis_global_length = Axes(id)%length
   END FUNCTION get_axis_global_length
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_tile_count">
-  !   <OVERVIEW>
-  !     Return the tile count for the axis.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION get_tile_count (ids)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the tile count for the axis IDs given.
-  !   </DESCRIPTION>
-  !   <IN NAME="ids" TYPE="INTEGER, DIMENSION(:)">
-  !     Axis IDs.  Possible dimensions: 1 <= <TT>size(ids(:))</TT> <= 4.
-  !   </IN>
+  !> @brief Return the tile count for the axis.
+  !! @return tile count for the axis
   INTEGER FUNCTION get_tile_count(ids)
-    INTEGER, DIMENSION(:), INTENT(in) :: ids
+    INTEGER, DIMENSION(:), INTENT(in) :: ids !< Axis IDs.
+                                             !! Possible dimensions: 1 <= <TT>size(ids(:))</TT> <= 4.
 
     INTEGER :: i, id, flag
 
@@ -818,21 +664,11 @@ CONTAINS
        END IF
     END DO
   END FUNCTION get_tile_count
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_domain1d">
-  !   <OVERVIEW>
-  !     Return the 1D domain.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     TYPE(domain1d) FUNCTION get_domain1d(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Retrun the 1D domain for the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Retrun the 1D domain for the axis ID given.
+  !! @return 1D domain for the axis ID given
   TYPE(domain1d) FUNCTION get_domain1d(id)
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
 
     CALL valid_id_check(id, 'get_domain1d')
     IF (Axes(id)%Domain .NE. NULL_DOMAIN1D) THEN
@@ -841,23 +677,12 @@ CONTAINS
        get_domain1d = NULL_DOMAIN1D
     ENDIF
   END FUNCTION get_domain1d
-  ! </FUNCTION>
 
-  ! <FUNCTION NAME="get_domain2d">
-  !   <OVERVIEW>
-  !     Return the 2D domain.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     TYPE(domain2d) FUNCTION get_domain2d(ids)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the 2D domain for the axis IDs given.
-  !   </DESCRIPTION>
-  !   <IN NAME="ids" TYPE="INTEGER, DIMENSION(:)">
-  !     Axis IDs.  Possible dimensions: 1 <= <TT>size(ids(:))</TT> <= 4.
-  !   </IN>
+  !> @brief Return the 2D domain for the axis IDs given.
+  !! @return 2D domain for the axis IDs given
   TYPE(domain2d) FUNCTION get_domain2d(ids)
-    INTEGER, DIMENSION(:), INTENT(in) :: ids
+    INTEGER, DIMENSION(:), INTENT(in) :: ids !< Axis IDs.
+                                             !! Possible dimensions: 1 <= <TT>size(ids(:))</TT> <= 4.
 
     INTEGER :: i, id, flag
 
@@ -879,19 +704,10 @@ CONTAINS
     END DO
   END FUNCTION get_domain2d
 
-  ! <FUNCTION NAME="get_domainUG">
-  !   <OVERVIEW>
-  !     Return the UG domain.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     TYPE(domainUG) FUNCTION get_domainUG(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Retrun the 1D domain for the axis ID given.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
+  !> @brief Retrun the 1D domain for the axis ID given.
+  !! @return 1D domain for the axis ID given
   TYPE(domainUG) FUNCTION get_domainUG(id)
-    INTEGER, INTENT(in) :: id
+    INTEGER, INTENT(in) :: id !< Axis ID
 
     CALL valid_id_check(id, 'get_domainUG')
     IF (Axes(id)%DomainUG .NE. NULL_DOMAINUG) THEN
@@ -901,25 +717,15 @@ CONTAINS
     ENDIF
   END FUNCTION get_domainUG
 
-  ! <SUBROUTINE NAME="axis_compatible_check">
-  !   <OVERVIEW>
-  !     Checks if the axes are compatible
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION axis_compatible_check(id)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Checks if the axes are compatible
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis ID</IN>
-!----------
 !ug support
+  !> @brief Checks if the axes are compatible
+  !! @return integer domain_type
   function axis_compatible_check(id,varname) result(domain_type)
 
    !Inputs/Outputs
     integer,dimension(:),intent(in)  :: id          !<The array of axis IDs
     character(*),intent(in),optional :: varname     !<The name of the variable
-    integer(INT_KIND)                :: domain_type !<DIAG_AXIS_NODOMAIN = no domain.
+    integer(I4_KIND)                :: domain_type !<DIAG_AXIS_NODOMAIN = no domain.
                                                     !<DIAG_AXIS_2DDOMAIN = structured domain.
                                                     !<DIAG_AXIS_UGDOMAIN = unstructured domain.
 
@@ -990,28 +796,12 @@ CONTAINS
 
     return
   end function axis_compatible_check
-!----------
 
-  ! </FUNCTION>
-
-  ! <SUBROUTINE NAME="get_axes_shift">
-  !   <OVERVIEW>
-  !     Return the value of the shift.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE get_axes_shift(ids, ishift, jshift)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Return the value of the shift for the axis IDs given.
-  !   </DESCRIPTION>
-  !   <IN NAME="ids" TYPE="INTEGER, DIMENSION(:)">
-  !     Axis IDs.  Possible dimensions: 1 <= <TT>size(ids(:))</TT> <= 4
-  !   </IN>
-  !   <OUT NAME="ishift" TYPE="INTEGER">X shift value.</OUT>
-  !   <OUT NAME="jshift" TYPE="INTEGER">Y shift value.</OUT>
+  !> @brief Return the value of the shift for the axis IDs given.
   SUBROUTINE get_axes_shift(ids, ishift, jshift)
     INTEGER, DIMENSION(:), INTENT(in) :: ids
-    INTEGER, INTENT(out) :: ishift, jshift
+    INTEGER, INTENT(out) :: ishift !< X shift value.
+    INTEGER, INTENT(out) :: jshift !< Y shift value.
 
     INTEGER :: i, id
 
@@ -1029,24 +819,12 @@ CONTAINS
        END SELECT
     END DO
   END SUBROUTINE get_axes_shift
-  ! </SUBROUTINE>
 
-  ! <PRIVATE>
-  ! <FUNCTION NAME="get_axis_num">
-  !   <OVERVIEW>
-  !     Returns index into axis table corresponding to a given axis name.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION get_axis_num(axis_name, set_name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Returns index into axis table corresponding to a given axis name.
-  !   </DESCRIPTION>
-  !   <IN NAME="axis_name" TYPE="CHARACTER(len=*)">Axis name.</IN>
-  !   <IN NAME="set_name" TYPE="CHARACTER(len=*), OPTIONAL">Set name.</IN>
+  !> @brief Returns index into axis table corresponding to a given axis name.
+  !! @return Returns index into axis table corresponding to a given axis name.
   INTEGER FUNCTION get_axis_num(axis_name, set_name)
-    CHARACTER(len=*), INTENT(in) :: axis_name
-    CHARACTER(len=*), INTENT(in), OPTIONAL :: set_name
+    CHARACTER(len=*), INTENT(in) :: axis_name !< Axis name
+    CHARACTER(len=*), INTENT(in), OPTIONAL :: set_name !< Set name
 
     INTEGER :: set, n
 
@@ -1063,23 +841,11 @@ CONTAINS
        END IF
     END DO
   END FUNCTION get_axis_num
-  ! </FUNCTION>
-  ! </PRIVATE>
 
-  ! <PRIVATE>
-  ! <FUNCTION NAME="get_axis_set_num">
-  !   <OVERVIEW>
-  !     Returns index in axis set table corresponding to a given axis set name.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     INTEGER FUNCTION get_axis_set_num(set_name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Returns index in axis set table corresponding to a given axis set name.
-  !   </DESCRIPTION>
-  !   <IN NAME="set_name" TYPE="CHARACTER(len=*)">Set name.</IN>
+  !> @brief Returns index in axis set table corresponding to a given axis set name
+  !! @return Returns index in axis set table corresponding to a given axis set name
   INTEGER FUNCTION get_axis_set_num (set_name)
-    CHARACTER(len=*), INTENT(in) :: set_name
+    CHARACTER(len=*), INTENT(in) :: set_name !< Set name
 
     INTEGER :: iset
 
@@ -1091,26 +857,12 @@ CONTAINS
        END IF
     END DO
   END FUNCTION get_axis_set_num
-  ! </FUNCTION>
-  ! </PRIVATE>
 
-  ! <PRIVATE>
-  ! <SUBROUTINE NAME="valid_id_check">
-  !   <OVERVIEW>
-  !     Check to see if the axis id is a vaild id.
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE valid_id_check(id, routine_name)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Check to see if the given axis id is a valid id.  If the axis id is invalid,
-  !     call a FATAL error.  If the ID is valid, just return.
-  !   </DESCRIPTION>
-  !   <IN NAME="id" TYPE="INTEGER">Axis id to check for validity</IN>
-  !   <IN NAME="routine_name" TYPE="CHARACTER(len=*)">Name of the subroutine checking for a valid axis id.</IN>
+  !> @brief Check to see if the given axis id is a valid id.  If the axis id is invalid,
+  !!     call a FATAL error.  If the ID is valid, just return.
   SUBROUTINE valid_id_check(id, routine_name)
-    INTEGER, INTENT(in) :: id
-    CHARACTER(len=*), INTENT(in) :: routine_name
+    INTEGER, INTENT(in) :: id !< Axis is to check for validity
+    CHARACTER(len=*), INTENT(in) :: routine_name !< Name of the subroutine checking for a valid axis id
 
     CHARACTER(len=5) :: emsg
 
@@ -1123,8 +875,6 @@ CONTAINS
             & 'Illegal value for axis_id used (value '//TRIM(emsg)//').', FATAL)
     END IF
   END SUBROUTINE valid_id_check
-  ! </SUBROUTINE>
-  ! </PRIVATE>
 
   SUBROUTINE diag_axis_attribute_init(diag_axis_id, name, type, cval, ival, rval)
     INTEGER, INTENT(in) :: diag_axis_id !< input field ID, obtained from diag_axis_mod::diag_axis_init.
@@ -1134,7 +884,7 @@ CONTAINS
     INTEGER, DIMENSION(:), INTENT(in), OPTIONAL :: ival !< Integer attribute value(s)
     REAL, DIMENSION(:), INTENT(in), OPTIONAL :: rval !< Real attribute value(s)
 
-    INTEGER :: istat, length, i, j, this_attribute, out_field
+    INTEGER :: istat, length, i, this_attribute
     CHARACTER(len=1024) :: err_msg
 
     IF ( .NOT.first_send_data_call ) THEN
@@ -1287,10 +1037,6 @@ CONTAINS
     END IF
   END SUBROUTINE diag_axis_attribute_init
 
-  ! <SUBROUTINE NAME="diag_axis_add_attribute_scalar_r" INTERFACE="diag_axis_add_attribute">
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="REAL" />
   SUBROUTINE diag_axis_add_attribute_scalar_r(diag_axis_id, att_name, att_value)
     INTEGER, INTENT(in) :: diag_axis_id
     CHARACTER(len=*), INTENT(in) :: att_name
@@ -1298,12 +1044,7 @@ CONTAINS
 
     CALL diag_axis_add_attribute_r1d(diag_axis_id, att_name, (/ att_value /))
   END SUBROUTINE diag_axis_add_attribute_scalar_r
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="diag_axis_add_attribute_scalar_i" INTERFACE="diag_axis_add_attribute">
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="INTEGER" />
   SUBROUTINE diag_axis_add_attribute_scalar_i(diag_axis_id, att_name, att_value)
     INTEGER, INTENT(in) :: diag_axis_id
     CHARACTER(len=*), INTENT(in) :: att_name
@@ -1311,12 +1052,7 @@ CONTAINS
 
     CALL diag_axis_add_attribute_i1d(diag_axis_id, att_name, (/ att_value /))
   END SUBROUTINE diag_axis_add_attribute_scalar_i
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="diag_axis_add_attribute_scalar_c" INTERFACE="diag_axis_add_attribute">
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="CHARACTER(len=*)" />
   SUBROUTINE diag_axis_add_attribute_scalar_c(diag_axis_id, att_name, att_value)
     INTEGER, INTENT(in) :: diag_axis_id
     CHARACTER(len=*), INTENT(in) :: att_name
@@ -1324,28 +1060,15 @@ CONTAINS
 
     CALL diag_axis_attribute_init(diag_axis_id, att_name, NF90_CHAR, cval=att_value)
   END SUBROUTINE diag_axis_add_attribute_scalar_c
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="diag_axis_add_attribute_r1d" INTERFACE="diag_axis_add_attribute">
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="REAL, DIMENSION(:)" />
   SUBROUTINE diag_axis_add_attribute_r1d(diag_axis_id, att_name, att_value)
     INTEGER, INTENT(in) :: diag_axis_id
     CHARACTER(len=*), INTENT(in) :: att_name
     REAL, DIMENSION(:), INTENT(in) :: att_value
 
-    INTEGER :: num_attributes, len
-    CHARACTER(len=512) :: err_msg
-
     CALL diag_axis_attribute_init(diag_axis_id, att_name, NF90_FLOAT, rval=att_value)
   END SUBROUTINE diag_axis_add_attribute_r1d
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="diag_axis_add_attribute_i1d" INTERFACE="diag_axis_add_attribute">
-  !   <IN NAME="diag_axis_id" TYPE="INTEGER" />
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)" />
-  !   <IN NAME="att_value" TYPE="INTEGER, DIMENSION(:)" />
   SUBROUTINE diag_axis_add_attribute_i1d(diag_axis_id, att_name, att_value)
     INTEGER, INTENT(in) :: diag_axis_id
     CHARACTER(len=*), INTENT(in) :: att_name
@@ -1353,24 +1076,12 @@ CONTAINS
 
     CALL diag_axis_attribute_init(diag_axis_id, att_name, NF90_INT, ival=att_value)
   END SUBROUTINE diag_axis_add_attribute_i1d
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="attribute_init_axis" INTERFACE="attribute_init">
-  !   <OVERVIEW>
-  !     Allocates the atttype in out_axis
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE attribute_init(out_axis, err_msg)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Allocates memory in out_file for the attributes.  Will <TT>FATAL</TT> if err_msg is not included
-  !     in the subroutine call.
-  !   </DESCRIPTION>
-  !   <INOUT NAME="out_file" TYPE="TYPE(file_type)">output file to allocate memory for attribute</INOUT>
-  !   <OUT NAME="err_msg" TYPE="CHARACTER(len=*), OPTIONAL">Error message, passed back to calling function</OUT>
+  !> @brief Allocates memory in out_file for the attributes.  Will <TT>FATAL</TT> if err_msg is not included
+  !!   in the subroutine call.
   SUBROUTINE attribute_init_axis(out_axis, err_msg)
-    TYPE(diag_axis_type), INTENT(inout) :: out_axis
-    CHARACTER(LEN=*), INTENT(out), OPTIONAL :: err_msg
+    TYPE(diag_axis_type), INTENT(inout) :: out_axis !< output file to allocate memory for attribute
+    CHARACTER(LEN=*), INTENT(out), OPTIONAL :: err_msg !< Error message, passed back to calling function
 
     INTEGER :: istat
 
@@ -1378,13 +1089,14 @@ CONTAINS
     IF ( PRESENT(err_msg) ) err_msg = ''
 
     ! Allocate memory for the attributes
-    IF ( .NOT._ALLOCATED(out_axis%attributes) ) THEN
+    IF ( .NOT.allocated(out_axis%attributes) ) THEN
        ALLOCATE(out_axis%attributes(max_axis_attributes), STAT=istat)
        IF ( istat.NE.0 ) THEN
           ! <ERROR STATUS="FATAL">
           !   Unable to allocate memory for diag axis attributes
           ! </ERROR>
-          IF ( fms_error_handler('diag_util_mod::attribute_init_axis', 'Unable to allocate memory for diag axis attributes', err_msg) ) THEN
+          IF ( fms_error_handler('diag_util_mod::attribute_init_axis', &
+             &  'Unable to allocate memory for diag axis attributes', err_msg) ) THEN
              RETURN
           END IF
        ELSE
@@ -1393,29 +1105,14 @@ CONTAINS
        END IF
     END IF
   END SUBROUTINE attribute_init_axis
-  ! </SUBROUTINE>
 
-  ! <SUBROUTINE NAME="prepend_attribute_axis">
-  !   <OVERVIEW>
-  !     Prepends the attribute value to an already existing attribute.  If the
-  !     attribute isn't yet defined, then creates a new attribute
-  !   </OVERVIEW>
-  !   <TEMPLATE>
-  !     SUBROUTINE prepend_attribute(out_file, attribute, prepend_value)
-  !   </TEMPLATE>
-  !   <DESCRIPTION>
-  !     Checks if the attribute already exists for <TT>out_axis</TT>.  If it exists,
-  !     then prepend the <TT>prepend_value</TT>, otherwise, create the attribute
-  !     with the <TT>prepend_value</TT>. <TT>err_msg</TT> indicates no duplicates found.
-  !   </DESCRIPTION>
-  !   <INOUT NAME="out_axis" TYPE="TYPE(diag_axis_type)">diagnostic axis that will get the attribute</INOUT>
-  !   <IN NAME="att_name" TYPE="CHARACTER(len=*)">Name of the attribute</IN>
-  !   <IN NAME="prepend_value" TYPE="CHARACTER(len=*)">Value to prepend</IN>
-  !   <OUT NAME="err_msg" TYPE="CHARACTER(len=*), OPTIONAL">Error message, passed back to calling routine</OUT>
+  !> @brief Prepends the attribute value to an already existing attribute.  If the
+  !!    attribute isn't yet defined, then creates a new attribute
   SUBROUTINE prepend_attribute_axis(out_axis, att_name, prepend_value, err_msg)
-    TYPE(diag_axis_type), INTENT(inout) :: out_axis
-    CHARACTER(len=*), INTENT(in) :: att_name, prepend_value
-    CHARACTER(len=*), INTENT(out) , OPTIONAL :: err_msg
+    TYPE(diag_axis_type), INTENT(inout) :: out_axis !< diagnostic axis that will get the attribute
+    CHARACTER(len=*), INTENT(in) :: att_name !< Name of the attribute
+    CHARACTER(len=*), INTENT(in) :: prepend_value !< Value to prepend
+    CHARACTER(len=*), INTENT(out) , OPTIONAL :: err_msg !< Error message, passed back to calling routine
 
     INTEGER :: length, i, this_attribute
     CHARACTER(len=512) :: err_msg_local
@@ -1497,10 +1194,10 @@ CONTAINS
        out_axis%attributes(this_attribute)%len = length
     END IF
   END SUBROUTINE prepend_attribute_axis
-  ! </SUBROUTINE>
 
-  ! given an axis, returns TRUE if the axis uses compression-by-gathering: that is, if
-  ! this is an axis for fields on unstructured grid
+  !> @brief given an axis, returns TRUE if the axis uses compression-by-gathering: that is, if
+  !!   this is an axis for fields on unstructured grid
+  !! @return logical whether or not the axis uses compression-by-gathering
   logical function axis_is_compressed(id)
     integer, intent(in) :: id
 
@@ -1509,7 +1206,7 @@ CONTAINS
     CALL valid_id_check(id, 'axis_is_compressed')
 
     axis_is_compressed = .FALSE.
-    if (.not._ALLOCATED(Axes(id)%attributes)) return
+    if (.not.allocated(Axes(id)%attributes)) return
     do i = 1, Axes(id)%num_attributes
        if (trim(Axes(id)%attributes(i)%name)=='compress') then
           axis_is_compressed = .TRUE.
@@ -1519,8 +1216,8 @@ CONTAINS
   end function axis_is_compressed
 
 
-  ! given an index of compressed-by-gathering axis, return an array of axes used in
-  ! compression. It is a fatal error to call it on axis that is not compressed
+  !> @brief given an index of compressed-by-gathering axis, return an array of axes used in
+  !!   compression. It is a fatal error to call it on axis that is not compressed
   subroutine get_compressed_axes_ids(id, r)
     integer, intent(in)  :: id
     integer, intent(out), allocatable :: r(:)
@@ -1533,8 +1230,9 @@ CONTAINS
     CALL valid_id_check(id, tag)
 
     associate (axis=>Axes(id))
-    if (.not._ALLOCATED(axis%attributes)) call error_mesg(tag, &
-       'attempt to get compression dimensions from axis "'//trim(axis%name)//'" which is not compressed (does not have any attributes)', FATAL)
+    if (.not.allocated(axis%attributes)) call error_mesg(tag, &
+       'attempt to get compression dimensions from axis "'//trim(axis%name)// &
+        & '" which is not compressed (does not have any attributes)', FATAL)
 
     iatt = 0
     do k = 1,axis%num_attributes
@@ -1580,3 +1278,5 @@ CONTAINS
     end associate ! axis
   end subroutine get_compressed_axes_ids
 END MODULE diag_axis_mod
+!> @}
+! close documentation grouping

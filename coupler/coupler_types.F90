@@ -16,15 +16,22 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup coupler_types_mod coupler_types_mod
+!> @ingroup coupler
+!> @brief This module contains type declarations for the coupler.
+!> @author Richard Slater, John Dunne
 
-!> \brief This module contains type declarations for the coupler.
-!!
-!! \author Richard Slater <Richard.Slater@noaa.gov>
-!! \author John Dunne <John.Dunne@noaa.gov>
+!> @addtogroup coupler_types_mod
+!> @{
 module coupler_types_mod
-
-  use fms_mod,           only: write_version_number
-  use fms_io_mod,        only: restart_file_type, register_restart_field
+  use fms_mod,           only: write_version_number, lowercase
+  use fms2_io_mod,       only: FmsNetcdfDomainFile_t, open_file, register_restart_field
+  use fms2_io_mod,       only: register_axis, unlimited, variable_exists, check_if_open
+  use fms2_io_mod,       only: register_field, get_num_dimensions, variable_att_exists
+  use fms2_io_mod,       only: get_variable_attribute, get_dimension_size, get_dimension_names
+  use fms2_io_mod,       only: register_variable_attribute, get_variable_dimension_names
+  use fms2_io_mod,       only: get_variable_num_dimensions
+  use fms_io_mod,        only: restart_file_type, fms_io_register_restart_field=>register_restart_field
   use fms_io_mod,        only: query_initialized, restore_state
   use time_manager_mod,  only: time_type
   use diag_manager_mod,  only: register_diag_field, send_data
@@ -32,6 +39,7 @@ module coupler_types_mod
   use mpp_domains_mod,   only: domain2D, mpp_redistribute
   use mpp_mod,           only: mpp_error, FATAL, mpp_chksum
 
+  use iso_fortran_env, only : int32, int64  !To get mpp_chksum value
 
   implicit none
   private
@@ -54,7 +62,10 @@ module coupler_types_mod
 
   character(len=*), parameter :: mod_name = 'coupler_types_mod'
 
-  !       3-d fields
+!> @}
+
+  !> Coupler data for 3D values
+  !> @ingroup coupler_types_mod
   type, public :: coupler_3d_values_type
     character(len=48)       :: name = ' '  !< The diagnostic name for this array
     real, pointer, contiguous, dimension(:,:,:) :: values => NULL() !< The pointer to the
@@ -71,6 +82,8 @@ module coupler_types_mod
                                            !! if it can not be read from a restart file
   end type coupler_3d_values_type
 
+  !> Coupler data for 3D fields
+  !> @ingroup coupler_types_mod
   type, public :: coupler_3d_field_type
     character(len=48)                 :: name = ' ' !< name
     integer                           :: num_fields = 0 !< num_fields
@@ -84,15 +97,20 @@ module coupler_types_mod
     character(len=128)                :: ocean_restart_file = ' ' !< ocean_restart_file
     type(restart_file_type), pointer  :: rest_type => NULL() !< A pointer to the restart_file_type
                                                              !! that is used for this field.
+    type(FmsNetcdfDomainFile_t), pointer :: fms2_io_rest_type => NULL() !< A pointer to the restart_file_type
+                                                                        !! That is used for this field
     logical                           :: use_atm_pressure !< use_atm_pressure
     logical                           :: use_10m_wind_speed !< use_10m_wind_speed
     logical                           :: pass_through_ice !< pass_through_ice
     real                              :: mol_wt = 0.0 !< mol_wt
   end type coupler_3d_field_type
 
+  !> Coupler data for 3D boundary conditions
+  !> @ingroup coupler_types_mod
   type, public :: coupler_3d_bc_type
     integer                                            :: num_bcs = 0  !< The number of boundary condition fields
-    type(coupler_3d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary condition fields
+    type(coupler_3d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary
+                                                                       !! condition fields
     logical    :: set = .false.       !< If true, this type has been initialized
     integer    :: isd, isc, iec, ied  !< The i-direction data and computational domain index ranges for this type
     integer    :: jsd, jsc, jec, jed  !< The j-direction data and computational domain index ranges for this type
@@ -100,7 +118,8 @@ module coupler_types_mod
   end type coupler_3d_bc_type
 
 
-  ! 2-d fields
+  !> Coupler data for 2D values
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_2d_values_type
     character(len=48)       :: name = ' '  !< The diagnostic name for this array
     real, pointer, contiguous, dimension(:,:) :: values => NULL() !< The pointer to the
@@ -117,6 +136,8 @@ module coupler_types_mod
                                            !! if it can not be read from a restart file
   end type coupler_2d_values_type
 
+  !> Coupler data for 2D fields
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_2d_field_type
     character(len=48)                 :: name = ' ' !< name
     integer                           :: num_fields = 0 !< num_fields
@@ -130,21 +151,27 @@ module coupler_types_mod
     character(len=128)                :: ocean_restart_file = ' ' !< ocean_restart_file
     type(restart_file_type), pointer  :: rest_type => NULL() !< A pointer to the restart_file_type
                                                              !! that is used for this field.
+    type(FmsNetcdfDomainFile_t), pointer :: fms2_io_rest_type => NULL() !< A pointer to the restart_file_type
+                                                                        !! That is used for this field
     logical                           :: use_atm_pressure !< use_atm_pressure
     logical                           :: use_10m_wind_speed !< use_10m_wind_speed
     logical                           :: pass_through_ice !< pass_through_ice
     real                              :: mol_wt = 0.0 !< mol_wt
   end type coupler_2d_field_type
 
+  !> Coupler data for 2D boundary conditions
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_2d_bc_type
     integer                                            :: num_bcs = 0  !< The number of boundary condition fields
-    type(coupler_2d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary condition fields
+    type(coupler_2d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary
+                                                                       !! condition fields
     logical    :: set = .false.       !< If true, this type has been initialized
     integer    :: isd, isc, iec, ied  !< The i-direction data and computational domain index ranges for this type
     integer    :: jsd, jsc, jec, jed  !< The j-direction data and computational domain index ranges for this type
   end type coupler_2d_bc_type
 
-  ! 1-d fields
+  !> Coupler data for 1D values
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_1d_values_type
     character(len=48)           :: name = ' '  !< The diagnostic name for this array
     real, pointer, dimension(:) :: values => NULL() !< The pointer to the array of values
@@ -158,6 +185,8 @@ module coupler_types_mod
                                                !! if it can not be read from a restart file
   end type coupler_1d_values_type
 
+  !> Coupler data for 1D fields
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_1d_field_type
     character(len=48)              :: name = ' ' !< name
     integer                        :: num_fields = 0 !< num_fields
@@ -175,13 +204,17 @@ module coupler_types_mod
     real                           :: mol_wt = 0.0 !< mol_wt
   end type coupler_1d_field_type
 
+  !> Coupler data for 1D boundary conditions
+  !> @ingroup coupler_types_mod
   type, public    :: coupler_1d_bc_type
     integer                                            :: num_bcs = 0  !< The number of boundary condition fields
-    type(coupler_1d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary condition fields
+    type(coupler_1d_field_type), dimension(:), pointer :: bc => NULL() !< A pointer to the array of boundary
+                                                                       !! condition fields
     logical    :: set = .false.       !< If true, this type has been initialized
   end type coupler_1d_bc_type
 
-
+  !> @addtogroup coupler_types_mod
+  !> @{
   ! The following public parameters can help in selecting the sub-elements of a
   ! coupler type.  There are duplicate values because different boundary
   ! conditions have different sub-elements.
@@ -198,11 +231,13 @@ module coupler_types_mod
   integer, public :: ind_flux0 = 4 !< The index for the piston velocity
   integer, public :: ind_deposition = 1 !< The index for the atmospheric deposition flux
   integer, public :: ind_runoff = 1 !< The index for a runoff flux
+  !> @}
 
   ! Interface definitions for overloaded routines
 
   !> This is the interface to spawn one coupler_bc_type into another and then
   !! register diagnostics associated with the new type.
+  !> @ingroup coupler_types_mod
   interface  coupler_type_copy
     module procedure coupler_type_copy_1d_2d, coupler_type_copy_1d_3d
     module procedure coupler_type_copy_2d_2d, coupler_type_copy_2d_3d
@@ -210,6 +245,7 @@ module coupler_types_mod
   end interface coupler_type_copy
 
   !> This is the interface to spawn one coupler_bc_type into another.
+  !> @ingroup coupler_types_mod
   interface  coupler_type_spawn
     module procedure CT_spawn_1d_2d, CT_spawn_2d_2d, CT_spawn_3d_2d
     module procedure CT_spawn_1d_3d, CT_spawn_2d_3d, CT_spawn_3d_3d
@@ -217,17 +253,20 @@ module coupler_types_mod
 
   !> This is the interface to copy the field data from one coupler_bc_type
   !! to another of the same rank, size and decomposition.
+  !> @ingroup coupler_types_mod
   interface coupler_type_copy_data
     module procedure CT_copy_data_2d, CT_copy_data_3d, CT_copy_data_2d_3d
   end interface coupler_type_copy_data
 
   !> This is the interface to redistribute the field data from one coupler_bc_type
   !! to another of the same rank and global size, but a different decomposition.
+  !> @ingroup coupler_types_mod
   interface coupler_type_redistribute_data
     module procedure CT_redistribute_data_2d, CT_redistribute_data_3d
   end interface coupler_type_redistribute_data
 
   !> This is the interface to rescale the field data in a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_rescale_data
     module procedure CT_rescale_data_2d, CT_rescale_data_3d
   end interface coupler_type_rescale_data
@@ -235,66 +274,83 @@ module coupler_types_mod
   !> This is the interface to increment the field data from one coupler_bc_type
   !! with the data from another.  Both must have the same horizontal size and
   !! decomposition, but a 2d type may be incremented by a 2d or 3d type
+  !> @ingroup coupler_types_mod
   interface coupler_type_increment_data
     module procedure CT_increment_data_2d_2d, CT_increment_data_3d_3d, CT_increment_data_2d_3d
   end interface coupler_type_increment_data
 
   !> This is the interface to extract a field in a coupler_bc_type into an array.
+  !> @ingroup coupler_types_mod
   interface coupler_type_extract_data
     module procedure CT_extract_data_2d, CT_extract_data_3d, CT_extract_data_3d_2d
   end interface coupler_type_extract_data
 
   !> This is the interface to set a field in a coupler_bc_type from an array.
+  !> @ingroup coupler_types_mod
   interface coupler_type_set_data
     module procedure CT_set_data_2d, CT_set_data_3d, CT_set_data_2d_3d
   end interface coupler_type_set_data
 
   !> This is the interface to set diagnostics for the arrays in a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_set_diags
     module procedure CT_set_diags_2d, CT_set_diags_3d
   end interface coupler_type_set_diags
 
   !> This is the interface to write out checksums for the elements of a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_write_chksums
     module procedure CT_write_chksums_2d, CT_write_chksums_3d
   end interface coupler_type_write_chksums
 
   !> This is the interface to write out diagnostics of the arrays in a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_send_data
     module procedure CT_send_data_2d, CT_send_data_3d
   end interface coupler_type_send_data
 
   !> This is the interface to override the values of the arrays in a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_data_override
     module procedure CT_data_override_2d, CT_data_override_3d
   end interface coupler_type_data_override
 
   !> This is the interface to register the fields in a coupler_bc_type to be saved
   !! in restart files.
+  !> @ingroup coupler_types_mod
   interface coupler_type_register_restarts
+    module procedure mpp_io_CT_register_restarts_2d, mpp_io_CT_register_restarts_3d
+    module procedure mpp_io_CT_register_restarts_to_file_2d, mpp_io_CT_register_restarts_to_file_3d
+
     module procedure CT_register_restarts_2d, CT_register_restarts_3d
-    module procedure CT_register_restarts_to_file_2d, CT_register_restarts_to_file_3d
   end interface coupler_type_register_restarts
 
   !> This is the interface to read in the fields in a coupler_bc_type that have
   !! been saved in restart files.
+  !> @ingroup coupler_types_mod
   interface coupler_type_restore_state
+    module procedure mpp_io_CT_restore_state_2d, mpp_io_CT_restore_state_3d
     module procedure CT_restore_state_2d, CT_restore_state_3d
   end interface coupler_type_restore_state
 
   !> This function interface indicates whether a coupler_bc_type has been initialized.
+  !> @ingroup coupler_types_mod
   interface coupler_type_initialized
     module procedure CT_initialized_1d, CT_initialized_2d, CT_initialized_3d
   end interface coupler_type_initialized
 
   !> This is the interface to deallocate any data associated with a coupler_bc_type.
+  !> @ingroup coupler_types_mod
   interface coupler_type_destructor
     module procedure CT_destructor_1d, CT_destructor_2d, CT_destructor_3d
   end interface coupler_type_destructor
 
 contains
 
-  !> \brief Initialize the coupler types
+!> @addtogroup coupler_types_mod
+!> @{
+
+  !> @brief Initialize the coupler types
   subroutine coupler_types_init
 
     logical, save   :: module_is_initialized = .false.
@@ -313,9 +369,9 @@ contains
   end subroutine  coupler_types_init  !}
 
 
-  !> \brief Copy fields from one coupler type to another. 1-D to 2-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 1-D to 2-D version for generic coupler_type_copy.
   !!
-  !! \throw FATAL, "Number of output fields exceeds zero"
+  !! @throw FATAL, "Number of output fields exceeds zero"
   subroutine coupler_type_copy_1d_2d(var_in, var_out, is, ie, js, je,&
       & diag_name, axes, time, suffix)
     type(coupler_1d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -324,15 +380,14 @@ contains
     integer, intent(in)                     :: ie !< upper bound of first dimension
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_1d_2d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -347,10 +402,10 @@ contains
         & call CT_set_diags_2d(var_out, diag_name, axes, time)
   end subroutine  coupler_type_copy_1d_2d
 
-  !> \brief Copy fields from one coupler type to another. 1-D to 3-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 1-D to 3-D version for generic coupler_type_copy.
   !!
   !!
-  !! \throw FATAL, "Number of output fields is exceeds zero"
+  !! @throw FATAL, "Number of output fields is exceeds zero"
   subroutine coupler_type_copy_1d_3d(var_in, var_out, is, ie, js, je, kd,&
       & diag_name, axes, time, suffix)
     type(coupler_1d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -360,15 +415,14 @@ contains
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
     integer, intent(in)                     :: kd !< third dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_1d_3d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -383,9 +437,9 @@ contains
         & call CT_set_diags_3d(var_out, diag_name, axes, time)
   end subroutine  coupler_type_copy_1d_3d
 
-  !> \brief Copy fields from one coupler type to another. 2-D to 2-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 2-D to 2-D version for generic coupler_type_copy.
   !!
-  !! \throw FATAL, "Number of output fields is exceeds zero"
+  !! @throw FATAL, "Number of output fields is exceeds zero"
   subroutine coupler_type_copy_2d_2d(var_in, var_out, is, ie, js, je,&
       & diag_name, axes, time, suffix)
     type(coupler_2d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -394,15 +448,14 @@ contains
     integer, intent(in)                     :: ie !< upper bound of first dimension
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_2d_2d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -417,9 +470,9 @@ contains
         & call CT_set_diags_2d(var_out, diag_name, axes, time)
   end subroutine  coupler_type_copy_2d_2d
 
-  !> \brief Copy fields from one coupler type to another. 2-D to 3-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 2-D to 3-D version for generic coupler_type_copy.
   !!
-  !! \throw FATAL, "Number of output fields is exceeds zero"
+  !! @throw FATAL, "Number of output fields is exceeds zero"
   subroutine coupler_type_copy_2d_3d(var_in, var_out, is, ie, js, je, kd,&
       & diag_name, axes, time, suffix)
     type(coupler_2d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -429,15 +482,14 @@ contains
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
     integer, intent(in)                     :: kd !< third dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_2d_3d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -452,9 +504,9 @@ contains
         & call CT_set_diags_3d(var_out, diag_name, axes, time)
   end subroutine  coupler_type_copy_2d_3d
 
-  !> \brief Copy fields from one coupler type to another. 3-D to 2-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 3-D to 2-D version for generic coupler_type_copy.
   !!
-  !! \throw FATAL, "Number of output fields is exceeds zero"
+  !! @throw FATAL, "Number of output fields is exceeds zero"
   subroutine coupler_type_copy_3d_2d(var_in, var_out, is, ie, js, je,&
       & diag_name, axes, time, suffix)
     type(coupler_3d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -463,15 +515,14 @@ contains
     integer, intent(in)                     :: ie !< upper bound of first dimension
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_3d_2d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -486,9 +537,9 @@ contains
         & call CT_set_diags_2d(var_out, diag_name, axes, time)
   end subroutine  coupler_type_copy_3d_2d
 
-  !> \brief Copy fields from one coupler type to another. 3-D to 3-D version for generic coupler_type_copy.
+  !> @brief Copy fields from one coupler type to another. 3-D to 3-D version for generic coupler_type_copy.
   !!
-  !! \throw FATAL, "Number of output fields exceeds zero"
+  !! @throw FATAL, "Number of output fields exceeds zero"
   subroutine coupler_type_copy_3d_3d(var_in, var_out, is, ie, js, je, kd,&
       & diag_name, axes, time, suffix)
     type(coupler_3d_bc_type), intent(in)    :: var_in !< variable to copy information from
@@ -498,15 +549,14 @@ contains
     integer, intent(in)                     :: js !< lower bound of second dimension
     integer, intent(in)                     :: je !< upper bound of second dimension
     integer, intent(in)                     :: kd !< third dimension
-    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*), intent(in)            :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:), intent(in)       :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type), intent(in)             :: time !< model time variable for registering diagnostic field
     character(len=*), intent(in), optional  :: suffix !< optional suffix to make the name identifier unique
 
     character(len=*), parameter :: error_header =&
         & '==>Error from coupler_types_mod (coupler_type_copy_3d_3d):'
-    character(len=400)      :: error_msg
-    integer                 :: m, n
 
     if (var_out%num_bcs > 0) then
       ! It is an error if the number of output fields exceeds zero, because it means this
@@ -522,15 +572,15 @@ contains
   end subroutine  coupler_type_copy_3d_3d
 
 
-  !> \brief Generate one coupler type using another as a template. 1-D to 2-D version for generic coupler_type_spawn.
+  !> @brief Generate one coupler type using another as a template. 1-D to 2-D version for generic coupler_type_spawn.
   !!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_1d_2d(var_in, var, idim, jdim, suffix, as_needed)
     type(coupler_1d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_2d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -617,15 +667,15 @@ contains
     endif
   end subroutine  CT_spawn_1d_2d
 
-  !> \brief Generate one coupler type using another as a template. 1-D to 3-D version for generic CT_spawn.
+  !> @brief Generate one coupler type using another as a template. 1-D to 3-D version for generic CT_spawn.
   !!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_1d_3d(var_in, var, idim, jdim, kdim, suffix, as_needed)
     type(coupler_1d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_3d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -721,15 +771,15 @@ contains
   end subroutine  CT_spawn_1d_3d
 
 
-  !> \brief Generate one coupler type using another as a template. 2-D to 2-D version for generic CT_spawn.
+  !> @brief Generate one coupler type using another as a template. 2-D to 2-D version for generic CT_spawn.
   !!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_2d_2d(var_in, var, idim, jdim, suffix, as_needed)
     type(coupler_2d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_2d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -815,16 +865,16 @@ contains
     endif
   end subroutine  CT_spawn_2d_2d
 
-  !> \brief Generate one coupler type using another as a template. 2-D to 3-D version for generic CT_spawn.
+  !> @brief Generate one coupler type using another as a template. 2-D to 3-D version for generic CT_spawn.
   !!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "Disordered k-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "Disordered k-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_2d_3d(var_in, var, idim, jdim, kdim, suffix, as_needed)
     type(coupler_2d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_3d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -918,15 +968,15 @@ contains
     endif
   end subroutine  CT_spawn_2d_3d
 
-  !> \brief Generate one coupler type using another as a template. 3-D to 2-D version for generic CT_spawn.
+  !> @brief Generate one coupler type using another as a template. 3-D to 2-D version for generic CT_spawn.
   !!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_3d_2d(var_in, var, idim, jdim, suffix, as_needed)
     type(coupler_3d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_2d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -1012,16 +1062,16 @@ contains
     endif
   end subroutine  CT_spawn_3d_2d
 
-!> \brief Generate one coupler type using another as a template. 3-D to 3-D version for generic CT_spawn.
-!!
-  !! \throw FATAL, "The output type has already been initialized"
-  !! \throw FATAL, "The parent type has not been initialized"
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "Disordered k-dimension index bound list"
-  !! \throw FATAL, "var%bc already assocated"
-  !! \throw FATAL, "var%bc('n')%field already associated"
-  !! \throw FATAL, "var%bc('n')%field('m')%values already associated"
+  !> @brief Generate one coupler type using another as a template. 3-D to 3-D version for generic CT_spawn.
+  !!
+  !! @throw FATAL, "The output type has already been initialized"
+  !! @throw FATAL, "The parent type has not been initialized"
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "Disordered k-dimension index bound list"
+  !! @throw FATAL, "var%bc already assocated"
+  !! @throw FATAL, "var%bc('n')%field already associated"
+  !! @throw FATAL, "var%bc('n')%field('m')%values already associated"
   subroutine CT_spawn_3d_3d(var_in, var, idim, jdim, kdim, suffix, as_needed)
     type(coupler_3d_bc_type), intent(in)    :: var_in  !< structure from which to copy information
     type(coupler_3d_bc_type), intent(inout) :: var     !< structure into which to copy information
@@ -1116,18 +1166,17 @@ contains
   end subroutine  CT_spawn_3d_3d
 
 
-  !> Copy all elements of coupler_2d_bc_type
-  !!
+  !> @brief Copy all elements of coupler_2d_bc_type.
   !! Do a direct copy of the data in all elements of one
   !! coupler_2d_bc_type into another.  Both must have the same array sizes.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
   subroutine CT_copy_data_2d(var_in, var, halo_size, bc_index, field_index,&
       & exclude_flux_type, only_flux_type, pass_through_ice)
     type(coupler_2d_bc_type),   intent(in)    :: var_in  !< BC_type structure with the data to copy
@@ -1137,8 +1186,10 @@ contains
                                                            !! that is being copied
     integer,          optional, intent(in)    :: field_index !< The index of the field in the
                                                            !! boundary condition that is being copied
-    character(len=*), optional, intent(in)    :: exclude_flux_type !< A string describing which types of fluxes to exclude from this copy.
-    character(len=*), optional, intent(in)    :: only_flux_type    !< A string describing which types of fluxes to include from this copy.
+    character(len=*), optional, intent(in)    :: exclude_flux_type !< A string describing which types
+                                                                   !! of fluxes to exclude from this copy.
+    character(len=*), optional, intent(in)    :: only_flux_type    !< A string describing which types
+                                                                   !! of fluxes to include from this copy.
     logical,          optional, intent(in)    :: pass_through_ice !< If true, only copy BCs whose
                                                            !! value of pass_through ice matches this
     logical :: copy_bc
@@ -1209,20 +1260,20 @@ contains
     enddo
   end subroutine CT_copy_data_2d
 
-  !> Copy all elements of coupler_3d_bc_type
+  !> @brief Copy all elements of coupler_3d_bc_type
   !!
   !! Do a direct copy of the data in all elements of one
   !! coupler_3d_bc_type into another.  Both must have the same array sizes.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an k-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive k-direction halo size for the input structure."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an k-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive k-direction halo size for the input structure."
   subroutine CT_copy_data_3d(var_in, var, halo_size, bc_index, field_index,&
       & exclude_flux_type, only_flux_type, pass_through_ice)
     type(coupler_3d_bc_type),   intent(in)    :: var_in  !< BC_type structure with the data to copy
@@ -1311,19 +1362,19 @@ contains
     enddo
   end subroutine CT_copy_data_3d
 
-  !> Copy all elements of coupler_2d_bc_type to coupler_3d_bc_type
+  !> @brief Copy all elements of coupler_2d_bc_type to coupler_3d_bc_type
   !!
   !! Do a direct copy of the data in all elements of one coupler_2d_bc_type into a
   !! coupler_3d_bc_type.  Both must have the same array sizes for the first two dimensions, while
   !! the extend of the 3rd dimension that is being filled may be specified via optional arguments..
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
   subroutine CT_copy_data_2d_3d(var_in, var, halo_size, bc_index, field_index,&
       & exclude_flux_type, only_flux_type, pass_through_ice,&
       & ind3_start, ind3_end)
@@ -1334,8 +1385,10 @@ contains
                                                          !! that is being copied
     integer,          optional, intent(in)    :: field_index !< The index of the field in the
                                                          !! boundary condition that is being copied
-    character(len=*), optional, intent(in)    :: exclude_flux_type !< A string describing which types of fluxes to exclude from this copy.
-    character(len=*), optional, intent(in)    :: only_flux_type    !< A string describing which types of fluxes to include from this copy.
+    character(len=*), optional, intent(in)    :: exclude_flux_type !< A string describing which types
+                                                                   !! of fluxes to exclude from this copy.
+    character(len=*), optional, intent(in)    :: only_flux_type    !< A string describing which types
+                                                                   !! of fluxes to include from this copy.
     logical,          optional, intent(in)    :: pass_through_ice !< If true, only copy BCs whose
                                                          !! value of pass_through ice matches this
     integer,          optional, intent(in)    :: ind3_start  !< The starting value of the 3rd
@@ -1417,13 +1470,13 @@ contains
   end subroutine CT_copy_data_2d_3d
 
 
-  !> Redistribute the data in all elements of a coupler_2d_bc_type
+  !> @brief Redistribute the data in all elements of a coupler_2d_bc_type
   !!
   !! Redistributes the data in all elements of one coupler_2d_bc_type
   !! into another, which may be on different processors with a different decomposition.
   !!
-  !! \throw FATAL, "Mismatch in num_bcs in CT_copy_data_2d."
-  !! \throw FATAL, "Mismatch in the total number of fields in CT_redistribute_data_2d."
+  !! @throw FATAL, "Mismatch in num_bcs in CT_copy_data_2d."
+  !! @throw FATAL, "Mismatch in the total number of fields in CT_redistribute_data_2d."
   subroutine CT_redistribute_data_2d(var_in, domain_in, var_out, domain_out, complete)
     type(coupler_2d_bc_type), intent(in)    :: var_in     !< BC_type structure with the data to copy (intent in)
     type(domain2D),           intent(in)    :: domain_in  !< The FMS domain for the input structure
@@ -1510,7 +1563,7 @@ contains
     endif
   end subroutine CT_redistribute_data_2d
 
-  !> Redistributes the data in all elements of one coupler_2d_bc_type
+  !> @brief Redistributes the data in all elements of one coupler_2d_bc_type
   !!
   !! Redistributes the data in all elements of one coupler_2d_bc_type into another, which may be on
   !! different processors with a different decomposition.
@@ -1602,7 +1655,7 @@ contains
   end subroutine CT_redistribute_data_3d
 
 
-  !> Rescales the fields in the fields in the elements of a coupler_2d_bc_type
+  !> @brief Rescales the fields in the fields in the elements of a coupler_2d_bc_type
   !!
   !! Rescales the fields in the elements of a coupler_2d_bc_type by multiplying by a factor scale.
   !! If scale is 0, this is a direct assignment to 0, so that NaNs will not persist.
@@ -1692,7 +1745,7 @@ contains
     enddo
   end subroutine CT_rescale_data_2d
 
-  !! Rescales the fields in the elements of a coupler_3d_bc_type
+  !> @brief Rescales the fields in the elements of a coupler_3d_bc_type
   !!
   !! This subroutine rescales the fields in the elements of a coupler_3d_bc_type by multiplying by a
   !! factor scale.  If scale is 0, this is a direct assignment to 0, so that NaNs will not persist.
@@ -1787,18 +1840,18 @@ contains
   end subroutine CT_rescale_data_3d
 
 
-  !! Increment data in all elements of one coupler_2d_bc_type
+  !> @brief Increment data in all elements of one coupler_2d_bc_type
   !!
   !! Do a direct increment of the data in all elements of one coupler_2d_bc_type into another.  Both
   !! must have the same array sizes.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
   subroutine CT_increment_data_2d_2d(var_in, var, halo_size, bc_index, field_index,&
       & scale_factor, scale_prev, exclude_flux_type, only_flux_type, pass_through_ice)
     type(coupler_2d_bc_type),   intent(in)    :: var_in  !< BC_type structure with the data to add to the other type
@@ -1879,7 +1932,7 @@ contains
 
       do m = 1, var_in%bc(n)%num_fields
         if (present(field_index)) then
-          if (m /= field_index) cycle 
+          if (m /= field_index) cycle
         endif
         if ( associated(var%bc(n)%field(m)%values) ) then
           do j=var%jsc-halo,var%jec+halo
@@ -1894,20 +1947,20 @@ contains
   end subroutine CT_increment_data_2d_2d
 
 
-  !! Increment data in all elements of one coupler_3d_bc_type
+  !> @brief Increment data in all elements of one coupler_3d_bc_type
   !!
   !! Do a direct increment of the data in all elements of one coupler_3d_bc_type into another.  Both
   !! must have the same array sizes.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an k-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive k-direction halo size for the input structure."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an k-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive k-direction halo size for the input structure."
   subroutine CT_increment_data_3d_3d(var_in, var, halo_size, bc_index, field_index,&
       & scale_factor, scale_prev, exclude_flux_type, only_flux_type, pass_through_ice)
     type(coupler_3d_bc_type),   intent(in)    :: var_in  !< BC_type structure with the data to add to the other type
@@ -2006,23 +2059,23 @@ contains
     enddo
   end subroutine CT_increment_data_3d_3d
 
-  !! Increment data in the elements of a coupler_2d_bc_type with weighted averages of elements of a
+  !> @brief Increment data in the elements of a coupler_2d_bc_type with weighted averages of elements of a
   !! coupler_3d_bc_type
   !!
   !! Increments the data in the elements of a coupler_2d_bc_type with the weighed average of the
   !! elements of a coupler_3d_bc_type. Both must have the same horizontal array sizes and the
   !! normalized weight array must match the array sizes of the coupler_3d_bc_type.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "bc_index must be present if field_index is present."
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an k-direction computational domain size mismatch."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "weights array must be the i-size of a computational or data domain."
-  !! \throw FATAL, "weights array must be the j-size of a computational or data domain."
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index is present and exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "bc_index must be present if field_index is present."
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an k-direction computational domain size mismatch."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "weights array must be the i-size of a computational or data domain."
+  !! @throw FATAL, "weights array must be the j-size of a computational or data domain."
   subroutine CT_increment_data_2d_3d(var_in, weights, var, halo_size, bc_index, field_index,&
       & scale_factor, scale_prev, exclude_flux_type, only_flux_type, pass_through_ice)
     type(coupler_3d_bc_type),   intent(in)    :: var_in  !< BC_type structure with the data to add to the other type
@@ -2079,11 +2132,14 @@ contains
     if (n2 >= n1) then
       ! A more consciencious implementation would include a more descriptive error messages.
       if ((var_in%iec-var_in%isc) /= (var%iec-var%isc))&
-          & call mpp_error(FATAL, "CT_increment_data_2d_3d: There is an i-direction computational domain size mismatch.")
+          & call mpp_error(FATAL, &
+                           &  "CT_increment_data_2d_3d: There is an i-direction computational domain size mismatch.")
       if ((var_in%jec-var_in%jsc) /= (var%jec-var%jsc))&
-          & call mpp_error(FATAL, "CT_increment_data_2d_3d: There is a j-direction computational domain size mismatch.")
+          & call mpp_error(FATAL, &
+                           &  "CT_increment_data_2d_3d: There is a j-direction computational domain size mismatch.")
       if ((1+var_in%ke-var_in%ks) /= size(weights,3))&
-          & call mpp_error(FATAL, "CT_increment_data_2d_3d: There is a k-direction size mismatch with the weights array.")
+          & call mpp_error(FATAL, &
+                           &  "CT_increment_data_2d_3d: There is a k-direction size mismatch with the weights array.")
       if ((var_in%isc-var_in%isd < halo) .or. (var_in%ied-var_in%iec < halo))&
           & call mpp_error(FATAL, "CT_increment_data_2d_3d: Excessive i-direction halo size for the input structure.")
       if ((var_in%jsc-var_in%jsd < halo) .or. (var_in%jed-var_in%jec < halo))&
@@ -2100,7 +2156,8 @@ contains
       elseif ((1+var_in%ied-var_in%isd) == size(weights,1)) then
         iow = 1 + (var_in%isc - var_in%isd) - var%isc
       else
-        call mpp_error(FATAL, "CT_increment_data_2d_3d: weights array must be the i-size of a computational or data domain.")
+        call mpp_error(FATAL, &
+                   &  "CT_increment_data_2d_3d: weights array must be the i-size of a computational or data domain.")
       endif
       if ((1+var%jec-var%jsc) == size(weights,2)) then
         jow = 1 - var%jsc
@@ -2109,7 +2166,8 @@ contains
       elseif ((1+var_in%jed-var_in%jsd) == size(weights,2)) then
         jow = 1 + (var_in%jsc - var_in%jsd) - var%jsc
       else
-        call mpp_error(FATAL, "CT_increment_data_2d_3d: weights array must be the j-size of a computational or data domain.")
+        call mpp_error(FATAL, &
+                   &  "CT_increment_data_2d_3d: weights array must be the j-size of a computational or data domain.")
       endif
 
       io1 = var_in%isc - var%isc
@@ -2145,22 +2203,22 @@ contains
     enddo
   end subroutine CT_increment_data_2d_3d
 
-  !> Extract a 2d field from a coupler_2d_bc_type
+  !> @brief Extract a 2d field from a coupler_2d_bc_type
   !!
   !! Extract a single 2-d field from a coupler_2d_bc_type into a two-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
   subroutine CT_extract_data_2d(var_in, bc_index, field_index, array_out,&
       & scale_factor, halo_size, idim, jdim)
     type(coupler_2d_bc_type),   intent(in)    :: var_in    !< BC_type structure with the data to extract
@@ -2281,23 +2339,23 @@ contains
     enddo
   end subroutine CT_extract_data_2d
 
-  !! Extract a single k-level of a 3d field from a coupler_3d_bc_type
+  !> @brief Extract a single k-level of a 3d field from a coupler_3d_bc_type
   !!
   !! Extract a single k-level of a 3-d field from a coupler_3d_bc_type into a two-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The extracted k-index of 'k' is outside of the valid range of 'ks' to 'ke'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The extracted k-index of 'k' is outside of the valid range of 'ks' to 'ke'"
   subroutine CT_extract_data_3d_2d(var_in, bc_index, field_index, k_in, array_out,&
       & scale_factor, halo_size, idim, jdim)
     type(coupler_3d_bc_type),   intent(in)    :: var_in    !< BC_type structure with the data to extract
@@ -2322,7 +2380,7 @@ contains
     character(len=400)      :: error_msg
 
     real :: scale
-    integer :: i, j, k, halo, i_off, j_off
+    integer :: i, j, halo, i_off, j_off
 
     if (bc_index <= 0) then
       array_out(:,:) = 0.0
@@ -2424,23 +2482,23 @@ contains
     enddo
   end subroutine CT_extract_data_3d_2d
 
-  !> Extract single 3d field from a coupler_3d_bc_type
+  !> @brief Extract single 3d field from a coupler_3d_bc_type
   !!
   !! Extract a single 3-d field from a coupler_3d_bc_type into a three-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with k-dimension size 'n' does not match the data of size 'd'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with k-dimension size 'n' does not match the data of size 'd'"
   subroutine CT_extract_data_3d(var_in, bc_index, field_index, array_out,&
       & scale_factor, halo_size, idim, jdim)
     type(coupler_3d_bc_type),   intent(in)    :: var_in    !< BC_type structure with the data to extract
@@ -2571,22 +2629,22 @@ contains
     enddo
   end subroutine CT_extract_data_3d
 
-  !> Set single 2d field in coupler_3d_bc_type
+  !> @brief Set single 2d field in coupler_3d_bc_type
   !!
   !! Set a single 2-d field in a coupler_3d_bc_type from a two-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
   subroutine CT_set_data_2d(array_in, bc_index, field_index, var,&
       & scale_factor, halo_size, idim, jdim)
     real, dimension(1:,1:),     intent(in)   :: array_in   !< The source array for the field; its size
@@ -2703,24 +2761,24 @@ contains
     enddo
   end subroutine CT_set_data_2d
 
-  !> Set one k-level of a single 3d field in a coupler_3d_bc_type
+  !> @brief Set one k-level of a single 3d field in a coupler_3d_bc_type
   !!
   !! This subroutine sets a one k-level of a single 3-d field in a coupler_3d_bc_type from a
   !! two-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The k-index of 'k' is outside of the valid range of 'ks' to 'ke'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The k-index of 'k' is outside of the valid range of 'ks' to 'ke'"
   subroutine CT_set_data_2d_3d(array_in, bc_index, field_index, k_out, var,&
       & scale_factor, halo_size, idim, jdim)
     real, dimension(1:,1:),     intent(in)    :: array_in  !< The source array for the field; its size
@@ -2845,23 +2903,23 @@ contains
     enddo
   end subroutine CT_set_data_2d_3d
 
-  !> Set a single 3d field in a coupler_3d_bc_type
+  !> @brief Set a single 3d field in a coupler_3d_bc_type
   !!
   !! This subroutine sets a single 3-d field in a coupler_3d_bc_type from a three-dimensional array.
   !!
-  !! \throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
-  !! \throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
-  !! \throw FATAL, "Excessive i-direction halo size for the input structure."
-  !! \throw FATAL, "Excessive j-direction halo size for the input structure."
-  !! \throw FATAL, "Disordered i-dimension index bound list"
-  !! \throw FATAL, "Disordered j-dimension index bound list"
-  !! \throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
-  !! \throw FATAL, "There is an i-direction computational domain size mismatch."
-  !! \throw FATAL, "There is an j-direction computational domain size mismatch."
-  !! \throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
-  !! \throw FATAL, "The target array with K-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "bc_index is present and exceeds var_in%num_bcs."
+  !! @throw FATAL, "field_index exceeds num_fields for var_in%bc(bc_incdx)%name"
+  !! @throw FATAL, "Excessive i-direction halo size for the input structure."
+  !! @throw FATAL, "Excessive j-direction halo size for the input structure."
+  !! @throw FATAL, "Disordered i-dimension index bound list"
+  !! @throw FATAL, "Disordered j-dimension index bound list"
+  !! @throw FATAL, "The declared i-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "The declared j-dimension size of 'n' does not match the actual size of 'a'"
+  !! @throw FATAL, "There is an i-direction computational domain size mismatch."
+  !! @throw FATAL, "There is an j-direction computational domain size mismatch."
+  !! @throw FATAL, "The target array with i-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with j-dimension size 'n' is too small to match the data of size 'd'"
+  !! @throw FATAL, "The target array with K-dimension size 'n' is too small to match the data of size 'd'"
   subroutine CT_set_data_3d(array_in, bc_index, field_index, var,&
       & scale_factor, halo_size, idim, jdim)
     real, dimension(1:,1:,1:),  intent(in)    :: array_in  !< The source array for the field; its size
@@ -2990,12 +3048,13 @@ contains
   end subroutine CT_set_data_3d
 
 
-  !! Register the diagnostics of a coupler_2d_bc_type
+  !! @brief Register the diagnostics of a coupler_2d_bc_type
   !!
-  !! \throw FATAL, "axes has less than 2 elements"
+  !! @throw FATAL, "axes has less than 2 elements"
   subroutine CT_set_diags_2d(var, diag_name, axes, time)
     type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure for which to register diagnostics
-    character(len=*),         intent(in)    :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*),         intent(in)    :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:),    intent(in)    :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type),          intent(in)    :: time !< model time variable for registering diagnostic field
 
@@ -3017,12 +3076,13 @@ contains
     enddo
   end subroutine CT_set_diags_2d
 
-  !> Register the diagnostics of a coupler_3d_bc_type.
+  !> @brief Register the diagnostics of a coupler_3d_bc_type.
   !!
-  !! \throw FATAL, "axes has less than 3 elements"
+  !! @throw FATAL, "axes has less than 3 elements"
   subroutine CT_set_diags_3d(var, diag_name, axes, time)
     type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure for which to register diagnostics
-    character(len=*),         intent(in)    :: diag_name !< name for diagnostic file--if blank, then don't register the fields
+    character(len=*),         intent(in)    :: diag_name !< name for diagnostic file--if blank, then
+                                                         !! don't register the fields
     integer, dimension(:),    intent(in)    :: axes !< array of axes identifiers for diagnostic variable registration
     type(time_type),          intent(in)    :: time !< model time variable for registering diagnostic field
 
@@ -3045,7 +3105,7 @@ contains
   end subroutine CT_set_diags_3d
 
 
-  !> Write out all diagnostics of elements of a coupler_2d_bc_type
+  !> @brief Write out all diagnostics of elements of a coupler_2d_bc_type
   subroutine CT_send_data_2d(var, Time)
     type(coupler_2d_bc_type), intent(in) :: var  !< BC_type structure with the diagnostics to write
     type(time_type),          intent(in) :: time !< The current model time
@@ -3062,7 +3122,7 @@ contains
     enddo
   end subroutine CT_send_data_2d
 
-  !> Write out all diagnostics of elements of a coupler_3d_bc_type
+  !> @brief Write out all diagnostics of elements of a coupler_3d_bc_type
   subroutine CT_send_data_3d(var, Time)
     type(coupler_3d_bc_type), intent(in) :: var  !< BC_type structure with the diagnostics to write
     type(time_type),          intent(in) :: time !< The current model time
@@ -3079,11 +3139,611 @@ contains
     enddo
   end subroutine CT_send_data_3d
 
-  !! Register the fields in a coupler_2d_bc_type to be saved in restart files
+  !! @brief Register the fields in a coupler_2d_bc_type to be saved in restart files
+  !! This subroutine registers the fields in a coupler_2d_bc_type to be saved in restart files
+  !! specified in the field table.
+  subroutine CT_register_restarts_2d(var, bc_rest_files, num_rest_files, mpp_domain, to_read, ocean_restart, directory)
+    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
+    type(FmsNetcdfDomainFile_t),  dimension(:), pointer  :: bc_rest_files !< Structures describing the restart files
+    integer,                  intent(out) :: num_rest_files !< The number of restart files to use
+    type(domain2D),           intent(in)  :: mpp_domain     !< The FMS domain to use for this registration call
+    logical,                  intent(in)  :: to_read        !< Flag indicating if reading/writing a file
+    logical,         optional,intent(in)  :: ocean_restart  !< If true, use the ocean restart file name.
+    character(len=*),optional,intent(in)  :: directory      !< Directory where to open the file
+
+    character(len=80), dimension(max(1,var%num_bcs)) :: rest_file_names
+    character(len=80) :: file_nm
+    logical :: ocn_rest
+    integer :: f, n, m
+
+    character(len=20), allocatable, dimension(:)             :: dim_names !< Array of dimension names
+    character(len=20)                          :: io_type   !< flag indicating io type: "read" "overwrite"
+    logical, dimension(max(1,var%num_bcs))     :: file_is_open !< flag indicating if file is open
+    character(len=20)                          :: dir       !< Directory where to open the file
+
+    ocn_rest = .true.
+    if (present(ocean_restart)) ocn_rest = ocean_restart
+
+    if (present(directory)) dir = trim(directory)
+
+    if (to_read) then
+        io_type = "read"
+        if (.not. present(directory)) dir = "INPUT/"
+    else
+        io_type = "overwrite"
+        if (.not. present(directory)) dir = "RESTART/"
+    endif
+
+    ! Determine the number and names of the restart files
+    num_rest_files = 0
+    do n = 1, var%num_bcs
+      if (var%bc(n)%num_fields <= 0) cycle
+      file_nm = trim(var%bc(n)%ice_restart_file)
+      if (ocn_rest) file_nm = trim(var%bc(n)%ocean_restart_file)
+      do f = 1, num_rest_files
+        if (trim(file_nm) == trim(rest_file_names(f))) exit
+      enddo
+      if (f>num_rest_files) then
+        num_rest_files = num_rest_files + 1
+        rest_file_names(f) = trim(file_nm)
+      endif
+    enddo
+
+    if (num_rest_files == 0) return
+
+    allocate(bc_rest_files(num_rest_files))
+
+    !< Open the files
+    do n = 1, num_rest_files
+        file_is_open(n) = open_file(bc_rest_files(n), trim(dir)//rest_file_names(n), io_type, mpp_domain, &
+                                  & is_restart=.true.)
+        if (file_is_open(n)) then
+             call register_axis_wrapper(bc_rest_files(n), to_read=to_read)
+        endif
+    enddo
+
+    ! Register the fields with the restart files
+    do n = 1, var%num_bcs
+      if (var%bc(n)%num_fields <= 0) cycle
+
+      file_nm = trim(var%bc(n)%ice_restart_file)
+      if (ocn_rest) file_nm = trim(var%bc(n)%ocean_restart_file)
+      do f = 1, num_rest_files
+        if (trim(file_nm) == trim(rest_file_names(f))) exit
+      enddo
+
+      var%bc(n)%fms2_io_rest_type => bc_rest_files(f)
+
+      do m = 1, var%bc(n)%num_fields
+         if (file_is_open(f)) then
+            if( to_read .and. variable_exists(bc_rest_files(f), var%bc(n)%field(m)%name)) then
+                !< If reading get the dimension names from the file
+                allocate(dim_names(get_variable_num_dimensions(bc_rest_files(f), var%bc(n)%field(m)%name)))
+                call get_variable_dimension_names(bc_rest_files(f), &
+                & var%bc(n)%field(m)%name, dim_names)
+            else
+                !< If writing use dummy dimension names
+                allocate(dim_names(3))
+                dim_names(1) = "xaxis_1"
+                dim_names(2) = "yaxis_1"
+                dim_names(3) = "Time"
+            endif !< to_read
+
+            call register_restart_field(bc_rest_files(f),&
+            & var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, dim_names, &
+            & is_optional=var%bc(n)%field(m)%may_init )
+
+            deallocate(dim_names)
+         endif !< If file_is_open
+      enddo !< num_fields
+    enddo !< num_bcs
+
+  end subroutine CT_register_restarts_2d
+
+  !< If reading a restart, register the dimensions that are in the file
+  subroutine register_axis_wrapper_read(fileobj)
+    type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< Domain decomposed fileobj
+
+    character(len=20), dimension(:), allocatable :: file_dim_names !< Array of dimension names
+    integer :: i !< No description
+    integer :: dim_size !< Size of the dimension
+    integer :: ndims !< Number of dimensions in the file
+    logical :: is_domain_decomposed !< Flag indication if domain decomposed
+    character(len=1) :: buffer !< string buffer
+
+    ndims = get_num_dimensions(fileobj)
+    allocate(file_dim_names(ndims))
+
+    call get_dimension_names(fileobj, file_dim_names)
+
+    do i = 1, ndims
+       is_domain_decomposed = .false.
+
+       !< Check if the dimension is also a variable
+       if (variable_exists(fileobj, file_dim_names(i))) then
+
+          !< If the variable exists look for the "cartesian_axis" or "axis" variable attribute
+          if (variable_att_exists(fileobj, file_dim_names(i), "axis")) then
+              call get_variable_attribute(fileobj, file_dim_names(i), "axis", buffer)
+
+              !< If the attribute exists and it is "x" or "y" register it as a domain decomposed dimension
+              if (lowercase(buffer) .eq. "x" .or. lowercase(buffer) .eq. "y" ) then
+                  is_domain_decomposed = .true.
+                  call register_axis(fileobj, file_dim_names(i), buffer)
+              endif
+
+          else if (variable_att_exists(fileobj, file_dim_names(i), "cartesian_axis")) then
+              call get_variable_attribute(fileobj, file_dim_names(i), "cartesian_axis", buffer)
+
+              !< If the attribute exists and it "x" or "y" register it as a domain decomposed dimension
+              if (lowercase(buffer) .eq. "x" .or. lowercase(buffer) .eq. "y" ) then
+                  is_domain_decomposed = .true.
+                  call register_axis(fileobj, file_dim_names(i), buffer)
+              endif
+
+          endif !< If variable attribute exists
+       endif !< If variable exists
+
+       if (.not. is_domain_decomposed) then
+          call get_dimension_size(fileobj, file_dim_names(i), dim_size)
+          call register_axis(fileobj, file_dim_names(i), dim_size)
+       endif
+
+    end do
+
+  end subroutine register_axis_wrapper_read
+
+  !< If writting a restart, register the variables with dummy axis names
+  subroutine register_axis_wrapper_write(fileobj, nz)
+    type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< Domain decomposed fileobj
+    integer, intent(in), optional :: nz !< length of the z dimension
+
+    character(len=20) :: dim_names(4) !< Array of dimension names
+
+    dim_names(1) = "xaxis_1"
+    dim_names(2) = "yaxis_1"
+
+    call register_axis(fileobj, dim_names(1), "x")
+    call register_axis(fileobj, dim_names(2), "y")
+
+    !< If nz is present register a zaxis
+    if (.not. present(nz)) then
+       dim_names(3) = "Time"
+       call register_axis(fileobj, dim_names(3), unlimited)
+    else
+       dim_names(3) = "zaxis_1"
+       dim_names(4) = "Time"
+
+       call register_axis(fileobj, dim_names(3), nz)
+       call register_axis(fileobj, dim_names(4), unlimited)
+    endif !< if (.not. present(nz))
+
+    !< Add the dimension names as variable so that the combiner can work correctly
+    call register_field(fileobj, dim_names(1), "double", (/dim_names(1)/))
+    call register_variable_attribute(fileobj, dim_names(1), "axis", "X", str_len=1)
+
+    call register_field(fileobj, dim_names(2), "double", (/dim_names(2)/))
+    call register_variable_attribute(fileobj, dim_names(2), "axis", "Y", str_len=1)
+
+  end subroutine register_axis_wrapper_write
+
+  subroutine register_axis_wrapper(fileobj, to_read, nz)
+    type(FmsNetcdfDomainFile_t), intent(inout) :: fileobj !< Domain decomposed fileobj
+    logical, intent(in) :: to_read !< Flag indicating if reading file
+    integer, intent(in), optional :: nz !< length of the z dimension
+
+    if (to_read) then
+        call register_axis_wrapper_read(fileobj)
+    else
+        call register_axis_wrapper_write(fileobj, nz)
+    endif
+
+  end subroutine register_axis_wrapper
+
+  !! @brief Register the fields in a coupler_3d_bc_type to be saved in restart files
+  !! This subroutine registers the fields in a coupler_2d_bc_type to be saved in restart files
+  !! specified in the field table.
+  subroutine CT_register_restarts_3d(var, bc_rest_files, num_rest_files, mpp_domain, to_read, ocean_restart, directory)
+    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
+    type(FmsNetcdfDomainFile_t),  dimension(:), pointer  :: bc_rest_files !< Structures describing the restart files
+    integer,                  intent(out) :: num_rest_files !< The number of restart files to use
+    type(domain2D),           intent(in)  :: mpp_domain     !< The FMS domain to use for this registration call
+    logical,                  intent(in)  :: to_read        !< Flag indicating if reading/writing a file
+    logical,         optional,intent(in)  :: ocean_restart  !< If true, use the ocean restart file name.
+    character(len=*),optional,intent(in)  :: directory      !< Directory where to open the file
+
+    character(len=80), dimension(max(1,var%num_bcs)) :: rest_file_names
+    character(len=80) :: file_nm
+    logical :: ocn_rest
+    integer :: f, n, m
+
+    character(len=20), allocatable, dimension(:) :: dim_names !< Array of dimension names
+    character(len=20)                          :: io_type   !< flag indicating io type: "read" "overwrite"
+    logical, dimension(max(1,var%num_bcs))     :: file_is_open !< Flag indicating if file is open
+    character(len=20)                          :: dir       !< Directory where to open the file
+    integer                                    :: nz        !< Length of the z direction of each file
+
+    ocn_rest = .true.
+    if (present(ocean_restart)) ocn_rest = ocean_restart
+
+    if (present(directory)) dir = trim(directory)
+
+    if (to_read) then
+        io_type = "read"
+        if (.not. present(directory)) dir = "INPUT/"
+    else
+        io_type = "overwrite"
+        if (.not. present(directory)) dir = "RESTART/"
+    endif
+
+    nz = var%ke - var%ks + 1 !< NOTE: This assumes that the z dimension is the same for every variable
+    ! Determine the number and names of the restart files
+    num_rest_files = 0
+    do n = 1, var%num_bcs
+      if (var%bc(n)%num_fields <= 0) cycle
+      file_nm = trim(var%bc(n)%ice_restart_file)
+      if (ocn_rest) file_nm = trim(var%bc(n)%ocean_restart_file)
+      do f = 1, num_rest_files
+        if (trim(file_nm) == trim(rest_file_names(f))) exit
+      enddo
+      if (f>num_rest_files) then
+        num_rest_files = num_rest_files + 1
+        rest_file_names(f) = trim(file_nm)
+      endif
+    enddo
+
+    if (num_rest_files == 0) return
+
+    allocate(bc_rest_files(num_rest_files))
+
+    !< Open the files
+    do n = 1, num_rest_files
+        file_is_open(n) = open_file(bc_rest_files(n), trim(dir)//rest_file_names(n), io_type, mpp_domain, &
+                                  & is_restart=.true.)
+        if (file_is_open(n)) then
+
+             if (to_read) then
+                call register_axis_wrapper(bc_rest_files(n), to_read=to_read)
+             else
+                call register_axis_wrapper(bc_rest_files(n), to_read=to_read, nz=nz)
+             endif
+        endif
+    enddo
+
+    ! Register the fields with the restart files
+    do n = 1, var%num_bcs
+      if (var%bc(n)%num_fields <= 0) cycle
+
+      file_nm = trim(var%bc(n)%ice_restart_file)
+      if (ocn_rest) file_nm = trim(var%bc(n)%ocean_restart_file)
+      do f = 1, num_rest_files
+        if (trim(file_nm) == trim(rest_file_names(f))) exit
+      enddo
+
+      var%bc(n)%fms2_io_rest_type => bc_rest_files(f)
+
+      do m = 1, var%bc(n)%num_fields
+         if (file_is_open(f)) then
+            if( to_read .and. variable_exists(bc_rest_files(f), var%bc(n)%field(m)%name)) then
+                !< If reading get the dimension names from the file
+                allocate(dim_names(get_variable_num_dimensions(bc_rest_files(f), var%bc(n)%field(m)%name)))
+                call get_variable_dimension_names(bc_rest_files(f), &
+                & var%bc(n)%field(m)%name, dim_names)
+            else
+                !< If writing use dummy dimension names
+                allocate(dim_names(4))
+                dim_names(1) = "xaxis_1"
+                dim_names(2) = "yaxis_1"
+                dim_names(3) = "zaxis_1"
+                dim_names(4) = "Time"
+            endif !< to_read
+
+            call register_restart_field(bc_rest_files(f),&
+                 & var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, dim_names, &
+                 & is_optional=var%bc(n)%field(m)%may_init )
+            deallocate(dim_names)
+         endif !< If file_is_open
+      enddo !< num_fields
+    enddo !< num_bcs
+
+  end subroutine CT_register_restarts_3d
+
+  subroutine CT_restore_state_2d(var, use_fms2_io, directory, all_or_nothing, all_required, test_by_field)
+    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to restore from restart files
+    character(len=*), optional, intent(in)  :: directory !< A directory where the restart files should
+                                                    !! be found.  The default for FMS is 'INPUT'.
+    logical,        optional, intent(in)    :: all_or_nothing !< If true and there are non-mandatory
+                                                    !! restart fields, it is still an error if some
+                                                    !! fields are read successfully but others are not.
+    logical,        optional, intent(in)    :: all_required !< If true, all fields must be successfully
+                                                    !! read from the restart file, even if they were
+                                                    !! registered as not mandatory.
+    logical,        optional, intent(in)    :: test_by_field !< If true, all or none of the variables
+                                                    !! in a single field must be read successfully.
+    logical,        intent(in)    :: use_fms2_io !< This is just to distinguish the interfaces
+
+    integer :: n, m, num_fld
+    character(len=80) :: unset_varname
+    logical :: any_set, all_set, all_var_set, any_var_set, var_set
+
+    any_set = .false.
+    all_set = .true.
+    num_fld = 0
+    unset_varname = ""
+
+    do n = 1, var%num_bcs
+      any_var_set = .false.
+      all_var_set = .true.
+      do m = 1, var%bc(n)%num_fields
+        var_set = .false.
+        if (check_if_open(var%bc(n)%fms2_io_rest_type)) then
+            var_set = variable_exists(var%bc(n)%fms2_io_rest_type, var%bc(n)%field(m)%name)
+        endif
+
+        if (.not.var_set) unset_varname = trim(var%bc(n)%field(m)%name)
+        if (var_set) any_set = .true.
+        if (all_set) all_set = var_set
+        if (var_set) any_var_set = .true.
+        if (all_var_set) all_var_set = var_set
+      enddo
+
+      num_fld = num_fld + var%bc(n)%num_fields
+      if ((var%bc(n)%num_fields > 0) .and. present(test_by_field)) then
+        if (test_by_field .and. (all_var_set .neqv. any_var_set)) call mpp_error(FATAL,&
+            & "CT_restore_state_2d: test_by_field is true, and "//&
+            & trim(unset_varname)//" was not read but some other fields in "//&
+            & trim(trim(var%bc(n)%name))//" were.")
+      endif
+    enddo
+
+    if ((num_fld > 0) .and. present(all_or_nothing)) then
+      if (all_or_nothing .and. (all_set .neqv. any_set)) call mpp_error(FATAL,&
+          & "CT_restore_state_2d: all_or_nothing is true, and "//&
+          & trim(unset_varname)//" was not read but some other fields were.")
+    endif
+
+    if (present(all_required)) then
+      if (all_required .and. .not.all_set) then
+        call mpp_error(FATAL, "CT_restore_state_2d: all_required is true, but "//&
+            & trim(unset_varname)//" was not read from its restart file.")
+      endif
+    endif
+  end subroutine CT_restore_state_2d
+
+  !> @brief Read in fields from restart files into a coupler_3d_bc_type
+  !!
+  !! This subroutine reads in the fields in a coupler_3d_bc_type that have been saved in restart
+  !! files.
+  subroutine CT_restore_state_3d(var, use_fms2_io, directory, all_or_nothing, all_required, test_by_field)
+    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to restore from restart files
+    character(len=*), optional, intent(in)  :: directory !< A directory where the restart files should
+                                                    !! be found.  The default for FMS is 'INPUT'.
+    logical,        intent(in)              :: use_fms2_io !< This is just to distinguish the interfaces
+    logical,        optional, intent(in)    :: all_or_nothing !< If true and there are non-mandatory
+                                                    !! restart fields, it is still an error if some
+                                                    !! fields are read successfully but others are not.
+    logical,        optional, intent(in)    :: all_required !< If true, all fields must be successfully
+                                                    !! read from the restart file, even if they were
+                                                    !! registered as not mandatory.
+    logical,        optional, intent(in)    :: test_by_field !< If true, all or none of the variables
+                                                    !! in a single field must be read successfully.
+
+    integer :: n, m, num_fld
+    character(len=80) :: unset_varname
+    logical :: any_set, all_set, all_var_set, any_var_set, var_set
+
+    any_set = .false.
+    all_set = .true.
+    num_fld = 0
+    unset_varname = ""
+
+    do n = 1, var%num_bcs
+      any_var_set = .false.
+      all_var_set = .true.
+      do m = 1, var%bc(n)%num_fields
+        var_set = .false.
+        if (check_if_open(var%bc(n)%fms2_io_rest_type)) then
+            var_set = variable_exists(var%bc(n)%fms2_io_rest_type, var%bc(n)%field(m)%name)
+        endif
+
+        if (.not.var_set) unset_varname = trim(var%bc(n)%field(m)%name)
+
+        if (var_set) any_set = .true.
+        if (all_set) all_set = var_set
+        if (var_set) any_var_set = .true.
+        if (all_var_set) all_var_set = var_set
+      enddo
+
+      num_fld = num_fld + var%bc(n)%num_fields
+      if ((var%bc(n)%num_fields > 0) .and. present(test_by_field)) then
+        if (test_by_field .and. (all_var_set .neqv. any_var_set)) call mpp_error(FATAL,&
+            & "CT_restore_state_3d: test_by_field is true, and "//&
+            & trim(unset_varname)//" was not read but some other fields in "//&
+            & trim(trim(var%bc(n)%name))//" were.")
+      endif
+    enddo
+
+    if ((num_fld > 0) .and. present(all_or_nothing)) then
+      if (all_or_nothing .and. (all_set .neqv. any_set)) call mpp_error(FATAL,&
+          & "CT_restore_state_3d: all_or_nothing is true, and "//&
+          & trim(unset_varname)//" was not read but some other fields were.")
+    endif
+
+    if (present(all_required)) then
+      if (all_required .and. .not.all_set) then
+        call mpp_error(FATAL, "CT_restore_state_3d: all_required is true, but "//&
+            & trim(unset_varname)//" was not read from its restart file.")
+      endif
+    endif
+  end subroutine CT_restore_state_3d
+
+
+  !> @brief Potentially override the values in a coupler_2d_bc_type
+  subroutine CT_data_override_2d(gridname, var, Time)
+    character(len=3),         intent(in)    :: gridname !< 3-character long model grid ID
+    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to override
+    type(time_type),          intent(in)    :: time !< The current model time
+
+    integer :: m, n
+
+    do n = 1, var%num_bcs
+      do m = 1, var%bc(n)%num_fields
+        call data_override(gridname, var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, Time)
+      enddo
+    enddo
+  end subroutine CT_data_override_2d
+
+  !> @brief Potentially override the values in a coupler_3d_bc_type
+  subroutine CT_data_override_3d(gridname, var, Time)
+    character(len=3),         intent(in)    :: gridname !< 3-character long model grid ID
+    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to override
+    type(time_type),          intent(in)    :: time !< The current model time
+
+    integer :: m, n
+
+    do n = 1, var%num_bcs
+      do m = 1, var%bc(n)%num_fields
+        call data_override(gridname, var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, Time)
+      enddo
+    enddo
+  end subroutine CT_data_override_3d
+
+
+  !> @brief Write out checksums for the elements of a coupler_2d_bc_type
+  subroutine CT_write_chksums_2d(var, outunit, name_lead)
+    type(coupler_2d_bc_type),   intent(in) :: var  !< BC_type structure for which to register diagnostics
+    integer,                    intent(in) :: outunit !< The index of a open output file
+    character(len=*), optional, intent(in) :: name_lead !< An optional prefix for the variable names
+
+    character(len=120) :: var_name
+    integer :: m, n
+    integer(kind=int64) :: chks ! A checksum for the field
+
+    do n = 1, var%num_bcs
+      do m = 1, var%bc(n)%num_fields
+        if (present(name_lead)) then
+          var_name = trim(name_lead)//trim(var%bc(n)%field(m)%name)
+        else
+          var_name = trim(var%bc(n)%field(m)%name)
+        endif
+        chks = mpp_chksum(var%bc(n)%field(m)%values(var%isc:var%iec,var%jsc:var%jec))
+        if(outunit.ne.0) write(outunit, '("   CHECKSUM:: ",A40," = ",Z20)') trim(var_name), chks
+      enddo
+    enddo
+  end subroutine CT_write_chksums_2d
+
+  !> @brief Write out checksums for the elements of a coupler_3d_bc_type
+  subroutine CT_write_chksums_3d(var, outunit, name_lead)
+    type(coupler_3d_bc_type),   intent(in) :: var  !< BC_type structure for which to register diagnostics
+    integer,                    intent(in) :: outunit !< The index of a open output file
+    character(len=*), optional, intent(in) :: name_lead !< An optional prefix for the variable names
+
+    character(len=120) :: var_name
+    integer :: m, n
+    integer(kind=int64) :: chks ! A checksum for the field
+
+    do n = 1, var%num_bcs
+      do m = 1, var%bc(n)%num_fields
+        if (present(name_lead)) then
+          var_name = trim(name_lead)//trim(var%bc(n)%field(m)%name)
+        else
+          var_name = trim(var%bc(n)%field(m)%name)
+        endif
+        chks = mpp_chksum(var%bc(n)%field(m)%values(var%isc:var%iec,var%jsc:var%jec,:))
+        if(outunit.ne.0) write(outunit, '("   CHECKSUM:: ",A40," = ",Z20)') trim(var_name), chks
+      enddo
+    enddo
+  end subroutine CT_write_chksums_3d
+
+  !> @brief Indicate whether a coupler_1d_bc_type has been initialized.
+  !! @return Logical
+  logical function CT_initialized_1d(var)
+    type(coupler_1d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
+
+    CT_initialized_1d = var%set
+  end function CT_initialized_1d
+
+  !> @brief Indicate whether a coupler_2d_bc_type has been initialized.
+  !! @return Logical
+  logical function CT_initialized_2d(var)
+    type(coupler_2d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
+
+    CT_initialized_2d = var%set
+  end function CT_initialized_2d
+
+  !> @brief Indicate whether a coupler_3d_bc_type has been initialized.
+  !! @return Logical
+  logical function CT_initialized_3d(var)
+    type(coupler_3d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
+
+    CT_initialized_3d = var%set
+  end function CT_initialized_3d
+
+  !> @brief Deallocate all data associated with a coupler_1d_bc_type
+  subroutine CT_destructor_1d(var)
+    type(coupler_1d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
+
+    integer :: m, n
+
+    if (var%num_bcs > 0) then
+      do n = 1, var%num_bcs
+        do m = 1, var%bc(n)%num_fields
+          deallocate ( var%bc(n)%field(m)%values )
+        enddo
+        deallocate ( var%bc(n)%field )
+      enddo
+      deallocate ( var%bc )
+    endif
+
+    var%num_bcs = 0
+    var%set = .false.
+  end subroutine CT_destructor_1d
+
+  !> @brief Deallocate all data associated with a coupler_2d_bc_type
+  subroutine CT_destructor_2d(var)
+    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
+
+    integer :: m, n
+
+    if (var%num_bcs > 0) then
+      do n = 1, var%num_bcs
+        do m = 1, var%bc(n)%num_fields
+          deallocate ( var%bc(n)%field(m)%values )
+        enddo
+        deallocate ( var%bc(n)%field )
+      enddo
+      deallocate ( var%bc )
+    endif
+
+    var%num_bcs = 0
+    var%set = .false.
+  end subroutine CT_destructor_2d
+
+  !> @brief Deallocate all data associated with a coupler_3d_bc_type
+  subroutine CT_destructor_3d(var)
+    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
+
+    integer :: m, n
+
+    if (var%num_bcs > 0) then
+      do n = 1, var%num_bcs
+        do m = 1, var%bc(n)%num_fields
+          deallocate ( var%bc(n)%field(m)%values )
+        enddo
+        deallocate ( var%bc(n)%field )
+      enddo
+      deallocate ( var%bc )
+    endif
+
+    var%num_bcs = 0
+    var%set = .false.
+  end subroutine CT_destructor_3d
+
+  !! @brief Register the fields in a coupler_2d_bc_type to be saved in restart files
   !!
   !! This subroutine registers the fields in a coupler_2d_bc_type to be saved in restart files
   !! specified in the field table.
-  subroutine CT_register_restarts_2d(var, bc_rest_files, num_rest_files, mpp_domain, ocean_restart)
+  subroutine mpp_io_CT_register_restarts_2d(var, bc_rest_files, num_rest_files, mpp_domain, ocean_restart)
     type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
     type(restart_file_type),  dimension(:), pointer :: bc_rest_files !< Structures describing the restart files
     integer,                  intent(out) :: num_rest_files !< The number of restart files to use
@@ -3128,21 +3788,22 @@ contains
 
       var%bc(n)%rest_type => bc_rest_files(f)
       do m = 1, var%bc(n)%num_fields
-        var%bc(n)%field(m)%id_rest = register_restart_field(bc_rest_files(f),&
+        var%bc(n)%field(m)%id_rest = fms_io_register_restart_field(bc_rest_files(f),&
             & rest_file_names(f), var%bc(n)%field(m)%name, var%bc(n)%field(m)%values,&
             & mpp_domain, mandatory=.not.var%bc(n)%field(m)%may_init )
       enddo
     enddo
-  end subroutine CT_register_restarts_2d
+  end subroutine mpp_io_CT_register_restarts_2d
 
-  !! Register the fields in a coupler_2d_bc_type to be saved to restart files
+  !! @brief Register the fields in a coupler_2d_bc_type to be saved to restart files
   !!
   !! This subroutine  registers the  fields in  a coupler_2d_bc_type  to be  saved in  the specified
   !! restart file.
-  subroutine CT_register_restarts_to_file_2d(var, file_name, rest_file, mpp_domain, varname_prefix)
+  subroutine mpp_io_CT_register_restarts_to_file_2d(var, file_name, rest_file, mpp_domain, varname_prefix)
     type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
     character(len=*),         intent(in)    :: file_name !< The name of the restart file
-    type(restart_file_type),  pointer       :: rest_file !< A (possibly associated) structure describing the restart file
+    type(restart_file_type),  pointer       :: rest_file !< A (possibly associated) structure describing
+                                                         !! the restart file
     type(domain2D),           intent(in)    :: mpp_domain !< The FMS domain to use for this registration call
     character(len=*), optional, intent(in)  :: varname_prefix !< A prefix for the variable name
                                                          !! in the restart file, intended to allow
@@ -3161,18 +3822,18 @@ contains
       do m = 1, var%bc(n)%num_fields
         var_name = trim(var%bc(n)%field(m)%name)
         if (present(varname_prefix)) var_name = trim(varname_prefix)//trim(var_name)
-        var%bc(n)%field(m)%id_rest = register_restart_field(rest_file,&
+        var%bc(n)%field(m)%id_rest = fms_io_register_restart_field(rest_file,&
             & file_name, var_name, var%bc(n)%field(m)%values,&
             & mpp_domain, mandatory=.not.var%bc(n)%field(m)%may_init )
       enddo
     enddo
-  end subroutine CT_register_restarts_to_file_2d
+  end subroutine mpp_io_CT_register_restarts_to_file_2d
 
-  !! Register the fields in a coupler_3d_bc_type to be saved to restart files
+  !! @brief Register the fields in a coupler_3d_bc_type to be saved to restart files
   !!
   !! This subroutine registers the fields in a coupler_3d_bc_type to be saved in restart files
   !! specified in the field table.
-  subroutine CT_register_restarts_3d(var, bc_rest_files, num_rest_files, mpp_domain, ocean_restart)
+  subroutine mpp_io_CT_register_restarts_3d(var, bc_rest_files, num_rest_files, mpp_domain, ocean_restart)
     type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
     type(restart_file_type),  dimension(:), pointer :: bc_rest_files !< Structures describing the restart files
     integer,                  intent(out)   :: num_rest_files !< The number of restart files to use
@@ -3182,7 +3843,7 @@ contains
     character(len=80), dimension(max(1,var%num_bcs)) :: rest_file_names
     character(len=80) :: file_nm
     logical :: ocn_rest
-    integer :: f, n, m, id_restart
+    integer :: f, n, m
 
     ocn_rest = .true.
     if (present(ocean_restart)) ocn_rest = ocean_restart
@@ -3216,17 +3877,17 @@ contains
 
       var%bc(n)%rest_type => bc_rest_files(f)
       do m = 1, var%bc(n)%num_fields
-        var%bc(n)%field(m)%id_rest = register_restart_field(bc_rest_files(f),&
+        var%bc(n)%field(m)%id_rest = fms_io_register_restart_field(bc_rest_files(f),&
             & rest_file_names(f), var%bc(n)%field(m)%name, var%bc(n)%field(m)%values,&
             & mpp_domain, mandatory=.not.var%bc(n)%field(m)%may_init )
       enddo
     enddo
-  end subroutine CT_register_restarts_3d
+  end subroutine mpp_io_CT_register_restarts_3d
 
-  !> Register the fields in a coupler_3d_bc_type to be saved to restart files
+  !> @brief Register the fields in a coupler_3d_bc_type to be saved to restart files
   !!
   !! Registers the fields in a coupler_3d_bc_type to be saved in the specified restart file.
-  subroutine CT_register_restarts_to_file_3d(var, file_name, rest_file, mpp_domain, varname_prefix)
+  subroutine mpp_io_CT_register_restarts_to_file_3d(var, file_name, rest_file, mpp_domain, varname_prefix)
     type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to be registered for restarts
     character(len=*),         intent(in)  :: file_name !< The name of the restart file
     type(restart_file_type),  pointer     :: rest_file !< A (possibly associated) structure describing the restart file
@@ -3248,19 +3909,18 @@ contains
       do m = 1, var%bc(n)%num_fields
         var_name = trim(var%bc(n)%field(m)%name)
         if (present(varname_prefix)) var_name = trim(varname_prefix)//trim(var_name)
-        var%bc(n)%field(m)%id_rest = register_restart_field(rest_file,&
+        var%bc(n)%field(m)%id_rest = fms_io_register_restart_field(rest_file,&
             & file_name, var_name, var%bc(n)%field(m)%values,&
             & mpp_domain, mandatory=.not.var%bc(n)%field(m)%may_init )
       enddo
     enddo
-  end subroutine CT_register_restarts_to_file_3d
+  end subroutine mpp_io_CT_register_restarts_to_file_3d
 
-
-  !> Reads in fields from restart files into a coupler_2d_bc_type
+  !> @brief Reads in fields from restart files into a coupler_2d_bc_type
   !!
   !! This subroutine reads in the fields in a coupler_2d_bc_type that have been saved in restart
   !! files.
-  subroutine CT_restore_state_2d(var, directory, all_or_nothing, all_required, test_by_field)
+  subroutine mpp_io_CT_restore_state_2d(var, directory, all_or_nothing, all_required, test_by_field)
     type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to restore from restart files
     character(len=*), optional, intent(in)  :: directory !< A directory where the restart files should
                                                     !! be found.  The default for FMS is 'INPUT'.
@@ -3306,7 +3966,7 @@ contains
       num_fld = num_fld + var%bc(n)%num_fields
       if ((var%bc(n)%num_fields > 0) .and. present(test_by_field)) then
         if (test_by_field .and. (all_var_set .neqv. any_var_set)) call mpp_error(FATAL,&
-            & "CT_restore_state_2d: test_by_field is true, and "//&
+            & "mpp_io_CT_restore_state_2d: test_by_field is true, and "//&
             & trim(unset_varname)//" was not read but some other fields in "//&
             & trim(trim(var%bc(n)%name))//" were.")
       endif
@@ -3314,23 +3974,23 @@ contains
 
     if ((num_fld > 0) .and. present(all_or_nothing)) then
       if (all_or_nothing .and. (all_set .neqv. any_set)) call mpp_error(FATAL,&
-          & "CT_restore_state_2d: all_or_nothing is true, and "//&
+          & "mpp_io_CT_restore_state_2d: all_or_nothing is true, and "//&
           & trim(unset_varname)//" was not read but some other fields were.")
     endif
 
     if (present(all_required)) then
       if (all_required .and. .not.all_set) then
-        call mpp_error(FATAL, "CT_restore_state_2d: all_required is true, but "//&
+        call mpp_error(FATAL, "mpp_io_CT_restore_state_2d: all_required is true, but "//&
             & trim(unset_varname)//" was not read from its restart file.")
       endif
     endif
-  end subroutine CT_restore_state_2d
+  end subroutine mpp_io_CT_restore_state_2d
 
-  !> Read in fields from restart files into a coupler_3d_bc_type
+  !> @brief Read in fields from restart files into a coupler_3d_bc_type
   !!
   !! This subroutine reads in the fields in a coupler_3d_bc_type that have been saved in restart
   !! files.
-  subroutine CT_restore_state_3d(var, directory, all_or_nothing, all_required, test_by_field)
+  subroutine mpp_io_CT_restore_state_3d(var, directory, all_or_nothing, all_required, test_by_field)
     type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to restore from restart files
     character(len=*), optional, intent(in)  :: directory !< A directory where the restart files should
                                                     !! be found.  The default for FMS is 'INPUT'.
@@ -3377,7 +4037,7 @@ contains
       num_fld = num_fld + var%bc(n)%num_fields
       if ((var%bc(n)%num_fields > 0) .and. present(test_by_field)) then
         if (test_by_field .and. (all_var_set .neqv. any_var_set)) call mpp_error(FATAL,&
-            & "CT_restore_state_3d: test_by_field is true, and "//&
+            & "mpp_io_CT_restore_state_3d: test_by_field is true, and "//&
             & trim(unset_varname)//" was not read but some other fields in "//&
             & trim(trim(var%bc(n)%name))//" were.")
       endif
@@ -3385,173 +4045,18 @@ contains
 
     if ((num_fld > 0) .and. present(all_or_nothing)) then
       if (all_or_nothing .and. (all_set .neqv. any_set)) call mpp_error(FATAL,&
-          & "CT_restore_state_3d: all_or_nothing is true, and "//&
+          & "mpp_io_CT_restore_state_3d: all_or_nothing is true, and "//&
           & trim(unset_varname)//" was not read but some other fields were.")
     endif
 
     if (present(all_required)) then
       if (all_required .and. .not.all_set) then
-        call mpp_error(FATAL, "CT_restore_state_3d: all_required is true, but "//&
+        call mpp_error(FATAL, "mpp_io_CT_restore_state_3d: all_required is true, but "//&
             & trim(unset_varname)//" was not read from its restart file.")
       endif
     endif
-  end subroutine CT_restore_state_3d
+  end subroutine mpp_io_CT_restore_state_3d
 
-
-  !> Potentially override the values in a coupler_2d_bc_type
-  subroutine CT_data_override_2d(gridname, var, Time)
-    character(len=3),         intent(in)    :: gridname !< 3-character long model grid ID
-    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to override
-    type(time_type),          intent(in)    :: time !< The current model time
-
-    integer :: m, n
-
-    do n = 1, var%num_bcs
-      do m = 1, var%bc(n)%num_fields
-        call data_override(gridname, var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, Time)
-      enddo
-    enddo
-  end subroutine CT_data_override_2d
-
-  !> Potentially override the values in a coupler_3d_bc_type
-  subroutine CT_data_override_3d(gridname, var, Time)
-    character(len=3),         intent(in)    :: gridname !< 3-character long model grid ID
-    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to override
-    type(time_type),          intent(in)    :: time !< The current model time
-
-    integer :: m, n
-
-    do n = 1, var%num_bcs
-      do m = 1, var%bc(n)%num_fields
-        call data_override(gridname, var%bc(n)%field(m)%name, var%bc(n)%field(m)%values, Time)
-      enddo
-    enddo
-  end subroutine CT_data_override_3d
-
-
-  !> Write out checksums for the elements of a coupler_2d_bc_type
-  subroutine CT_write_chksums_2d(var, outunit, name_lead)
-    type(coupler_2d_bc_type),   intent(in) :: var  !< BC_type structure for which to register diagnostics
-    integer,                    intent(in) :: outunit !< The index of a open output file
-    character(len=*), optional, intent(in) :: name_lead !< An optional prefix for the variable names
-
-    character(len=120) :: var_name
-    integer :: m, n
-
-    do n = 1, var%num_bcs
-      do m = 1, var%bc(n)%num_fields
-        if (present(name_lead)) then
-          var_name = trim(name_lead)//trim(var%bc(n)%field(m)%name)
-        else
-          var_name = trim(var%bc(n)%field(m)%name)
-        endif
-        write(outunit, '("   CHECKSUM:: ",A40," = ",Z20)') trim(var_name),&
-            & mpp_chksum(var%bc(n)%field(m)%values(var%isc:var%iec,var%jsc:var%jec) )
-      enddo
-    enddo
-  end subroutine CT_write_chksums_2d
-
-  !> Write out checksums for the elements of a coupler_3d_bc_type
-  subroutine CT_write_chksums_3d(var, outunit, name_lead)
-    type(coupler_3d_bc_type),   intent(in) :: var  !< BC_type structure for which to register diagnostics
-    integer,                    intent(in) :: outunit !< The index of a open output file
-    character(len=*), optional, intent(in) :: name_lead !< An optional prefix for the variable names
-
-    character(len=120) :: var_name
-    integer :: m, n
-
-    do n = 1, var%num_bcs
-      do m = 1, var%bc(n)%num_fields
-        if (present(name_lead)) then
-          var_name = trim(name_lead)//trim(var%bc(n)%field(m)%name)
-        else
-          var_name = trim(var%bc(n)%field(m)%name)
-        endif
-        write(outunit, '("   CHECKSUM:: ",A40," = ",Z20)') var_name,&
-            & mpp_chksum(var%bc(n)%field(m)%values(var%isc:var%iec,var%jsc:var%jec,:) )
-      enddo
-    enddo
-  end subroutine CT_write_chksums_3d
-
-
-  !> Indicate whether a coupler_1d_bc_type has been initialized.
-  logical function CT_initialized_1d(var)
-    type(coupler_1d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
-
-    CT_initialized_1d = var%set
-  end function CT_initialized_1d
-
-  !> Indicate whether a coupler_2d_bc_type has been initialized.
-  logical function CT_initialized_2d(var)
-    type(coupler_2d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
-
-    CT_initialized_2d = var%set
-  end function CT_initialized_2d
-
-  !> Indicate whether a coupler_3d_bc_type has been initialized.
-  logical function CT_initialized_3d(var)
-    type(coupler_3d_bc_type), intent(in) :: var  !< BC_type structure to be deconstructed
-
-    CT_initialized_3d = var%set
-  end function CT_initialized_3d
-
-  !> Deallocate all data associated with a coupler_1d_bc_type
-  subroutine CT_destructor_1d(var)
-    type(coupler_1d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
-
-    integer :: m, n
-
-    if (var%num_bcs > 0) then
-      do n = 1, var%num_bcs
-        do m = 1, var%bc(n)%num_fields
-          deallocate ( var%bc(n)%field(m)%values )
-        enddo
-        deallocate ( var%bc(n)%field )
-      enddo
-      deallocate ( var%bc )
-    endif
-
-    var%num_bcs = 0
-    var%set = .false.
-  end subroutine CT_destructor_1d
-
-  !> Deallocate all data associated with a coupler_2d_bc_type
-  subroutine CT_destructor_2d(var)
-    type(coupler_2d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
-
-    integer :: m, n
-
-    if (var%num_bcs > 0) then
-      do n = 1, var%num_bcs
-        do m = 1, var%bc(n)%num_fields
-          deallocate ( var%bc(n)%field(m)%values )
-        enddo
-        deallocate ( var%bc(n)%field )
-      enddo
-      deallocate ( var%bc )
-    endif
-
-    var%num_bcs = 0
-    var%set = .false.
-  end subroutine CT_destructor_2d
-
-  !> Deallocate all data associated with a coupler_3d_bc_type
-  subroutine CT_destructor_3d(var)
-    type(coupler_3d_bc_type), intent(inout) :: var  !< BC_type structure to be deconstructed
-
-    integer :: m, n
-
-    if (var%num_bcs > 0) then
-      do n = 1, var%num_bcs
-        do m = 1, var%bc(n)%num_fields
-          deallocate ( var%bc(n)%field(m)%values )
-        enddo
-        deallocate ( var%bc(n)%field )
-      enddo
-      deallocate ( var%bc )
-    endif
-
-    var%num_bcs = 0
-    var%set = .false.
-  end subroutine CT_destructor_3d
 end module coupler_types_mod
+!> @}
+! close documentation grouping

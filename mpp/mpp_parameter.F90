@@ -16,8 +16,15 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup mpp_parameter_mod mpp_parameter_mod
+!> @ingroup mpp
+!> @brief Parameters values for use in various @ref mpp modules
+!> If needed, these values should be imported from their corresponding mpp module
+
+!> @addtogroup mpp_parameter_mod
+!> @{
 module mpp_parameter_mod
-#include <fms_platform.h>
+  use platform_mod
 
   implicit none
   private
@@ -26,8 +33,8 @@ module mpp_parameter_mod
 #include<file_version.h>
   public version
 
-  !--- public paramters which is used by mpp_mod and its components. 
-  !--- All othere modules should import these parameters from mpp_mod. 
+  !--- public paramters which is used by mpp_mod and its components.
+  !--- All othere modules should import these parameters from mpp_mod.
   public :: MAXPES, MPP_VERBOSE, MPP_DEBUG, ALL_PES, ANY_PE, NULL_PE, NOTE, WARNING, FATAL
   public :: MPP_WAIT, MPP_READY, MAX_CLOCKS, MAX_EVENT_TYPES, MAX_EVENTS, MPP_CLOCK_SYNC
   public :: MPP_CLOCK_DETAILED, CLOCK_COMPONENT, CLOCK_SUBCOMPONENT, CLOCK_MODULE_DRIVER
@@ -42,8 +49,8 @@ module mpp_parameter_mod
   public :: COMM_TAG_17, COMM_TAG_18, COMM_TAG_19, COMM_TAG_20
   public :: MPP_FILL_INT, MPP_FILL_FLOAT, MPP_FILL_DOUBLE
 
-  !--- public paramters which is used by mpp_domains_mod and its components. 
-  !--- All othere modules should import these parameters from mpp_domains_mod. 
+  !--- public paramters which is used by mpp_domains_mod and its components.
+  !--- All othere modules should import these parameters from mpp_domains_mod.
   public :: GLOBAL_DATA_DOMAIN, CYCLIC_GLOBAL_DOMAIN, BGRID_NE, BGRID_SW, CGRID_NE, CGRID_SW
   public :: DGRID_NE, DGRID_SW, FOLD_WEST_EDGE, FOLD_EAST_EDGE, FOLD_SOUTH_EDGE, FOLD_NORTH_EDGE
   public :: WUPDATE, EUPDATE, SUPDATE, NUPDATE, XUPDATE, YUPDATE, BITWISE_EXACT_SUM, NON_BITWISE_EXACT_SUM
@@ -54,8 +61,8 @@ module mpp_parameter_mod
   public :: ZERO, NINETY, MINUS_NINETY, ONE_HUNDRED_EIGHTY
   public :: NONBLOCK_UPDATE_TAG, EDGEUPDATE, EDGEONLY, NONSYMEDGEUPDATE, NONSYMEDGE
 
-  !--- public paramters which is used by mpp_domains_mod and its components. 
-  !--- All othere modules should import these parameters from mpp_io_mod. 
+  !--- public paramters which is used by mpp_domains_mod and its components.
+  !--- All othere modules should import these parameters from mpp_io_mod.
   public :: MPP_WRONLY, MPP_RDONLY, MPP_APPEND, MPP_OVERWR, MPP_ASCII, MPP_IEEE32
   public :: MPP_NATIVE, MPP_NETCDF, MPP_SEQUENTIAL, MPP_DIRECT, MPP_SINGLE, MPP_MULTI
   public :: MPP_DELETE, MPP_COLLECT, NULLUNIT, NULLTIME
@@ -74,21 +81,21 @@ module mpp_parameter_mod
   integer            :: DEFAULT_TAG = 1
   !--- implimented to centralize _FILL_ values for land_model.F90 into mpp_mod
   !------- instead of multiple includes of netcdf.inc and manual assignments
-  integer(INT_KIND) , parameter :: MPP_FILL_INT    = -2147483647            !NF_FILL_INT
-  real(DOUBLE_KIND) , parameter :: MPP_FILL_DOUBLE = 9.9692099683868690e+36 !NF_FILL_DOUBLE
-  real(FLOAT_KIND)  , parameter :: MPP_FILL_FLOAT  = 9.9692099683868690e+36 !NF_FILL_DOUBLE
+  integer(i4_kind) , parameter :: MPP_FILL_INT    = -2147483647            !NF_FILL_INT
+  real(r8_kind) , parameter :: MPP_FILL_DOUBLE = 9.9692099683868690e+36 !NF_FILL_DOUBLE
+  real(r4_kind)  , parameter :: MPP_FILL_FLOAT  = 9.9692099683868690e+36 !NF_FILL_DOUBLE
   !--- predefined clock granularities, but you can use any integer
   !--- using CLOCK_LOOP and above may distort coarser-grain measurements
-  integer, parameter :: CLOCK_COMPONENT=1      !component level, e.g model, exchange
-  integer, parameter :: CLOCK_SUBCOMPONENT=11  !top level within a model component, e.g dynamics, physics
-  integer, parameter :: CLOCK_MODULE_DRIVER=21 !module driver level, e.g adriver that calls multiple 
-                                               !related physics routines
-  integer, parameter :: CLOCK_MODULE=31        !module level, e.g main subroutine of a physics module
-  integer, parameter :: CLOCK_ROUTINE=41       !level of individual subroutine or function
-  integer, parameter :: CLOCK_LOOP=51          !loops or blocks within a routine
-  integer, parameter :: CLOCK_INFRA=61         !infrastructure level, e.g halo update
+  integer, parameter :: CLOCK_COMPONENT=1      !< component level, e.g model, exchange
+  integer, parameter :: CLOCK_SUBCOMPONENT=11  !< top level within a model component, e.g dynamics, physics
+  integer, parameter :: CLOCK_MODULE_DRIVER=21 !< module driver level, e.g adriver that calls multiple
+                                               !< related physics routines
+  integer, parameter :: CLOCK_MODULE=31        !< module level, e.g main subroutine of a physics module
+  integer, parameter :: CLOCK_ROUTINE=41       !< level of individual subroutine or function
+  integer, parameter :: CLOCK_LOOP=51          !< loops or blocks within a routine
+  integer, parameter :: CLOCK_INFRA=61         !< infrastructure level, e.g halo update
   integer, parameter :: MAX_BINS=20
-  integer(LONG_KIND), parameter :: MPP_WAIT=-1, MPP_READY=-2
+  integer(i8_kind), parameter :: MPP_WAIT=-1, MPP_READY=-2
 
   !--- The following paramters are used by mpp_domains_mod and its components.
   integer, parameter :: GLOBAL=0, CYCLIC=1
@@ -113,11 +120,11 @@ module mpp_parameter_mod
   integer, parameter :: ZERO=0, NINETY=90, MINUS_NINETY=-90, ONE_HUNDRED_EIGHTY=180
   integer, parameter :: NONBLOCK_UPDATE_TAG = 2
 
-! DOMAIN_ID_BASE acts as a counter increment for domains as they are defined. It's used in
-! combination with the flag parameter defined above to create a unique identifier for
-! each Domain+flags combination. Therefore, the value of any flag must not exceed DOMAIN_ID_BASE.
-! integer(LONG_KIND), parameter :: DOMAIN_ID_BASE=INT( 2**(4*LONG_KIND),KIND=LONG_KIND )
-  integer(LONG_KIND), parameter :: DOMAIN_ID_BASE=Z'0000000100000000' ! Workaround for 64bit init problem
+!> @var DOMAIN_ID_BASE acts as a counter increment for domains as they are defined. It's used in
+!! combination with the flag parameter defined above to create a unique identifier for
+!! each Domain+flags combination. Therefore, the value of any flag must not exceed DOMAIN_ID_BASE.
+!! integer(i8_kind), parameter :: DOMAIN_ID_BASE=INT( 2**(4*i8_kind),KIND=i8_kind )
+  integer(i8_kind), parameter :: DOMAIN_ID_BASE = 4294967296_i8_kind !! =(0x100000000)
   integer, parameter :: NON_BITWISE_EXACT_SUM=0
   integer, parameter :: BITWISE_EXACT_SUM=1
   integer, parameter :: BITWISE_EFP_SUM=2
@@ -126,14 +133,14 @@ module mpp_parameter_mod
   integer, parameter :: MAX_TILES=10
 
   !--- The following paramters are used by mpp_io_mod and its components.
-  integer, parameter :: MPP_WRONLY=100, MPP_RDONLY=101, MPP_APPEND=102, MPP_OVERWR=103 !action on open
-  integer, parameter :: MPP_ASCII=200,  MPP_IEEE32=201, MPP_NATIVE=202, MPP_NETCDF=203 !format
-  integer, parameter :: MPP_SEQUENTIAL=300, MPP_DIRECT=301 !access
-  integer, parameter :: MPP_SINGLE=400, MPP_MULTI=401      !threading, fileset
-  integer, parameter :: MPP_DELETE=501, MPP_COLLECT=502    !action on close
-  integer, parameter :: NULLUNIT=-1                        !returned by PEs not participating in    
-                                                           !IO after a collective call with threading
-                                                           !equal to MPP_SINGLE
+  integer, parameter :: MPP_WRONLY=100, MPP_RDONLY=101, MPP_APPEND=102, MPP_OVERWR=103 !< action on open
+  integer, parameter :: MPP_ASCII=200,  MPP_IEEE32=201, MPP_NATIVE=202, MPP_NETCDF=203 !< format
+  integer, parameter :: MPP_SEQUENTIAL=300, MPP_DIRECT=301 !< access
+  integer, parameter :: MPP_SINGLE=400, MPP_MULTI=401      !< threading, fileset
+  integer, parameter :: MPP_DELETE=501, MPP_COLLECT=502    !< action on close
+  integer, parameter :: NULLUNIT=-1                        !< returned by PEs not participating in
+                                                           !! IO after collective call with threading
+                                                           !! equal to MPP_SINGLE
   !--- unique tag used in FMS
   integer, parameter :: COMM_TAG_1  = 1,  COMM_TAG_2  = 2,  COMM_TAG_3  = 3,  COMM_TAG_4  = 4
   integer, parameter :: COMM_TAG_5  = 5,  COMM_TAG_6  = 6,  COMM_TAG_7  = 7,  COMM_TAG_8  = 8
@@ -142,14 +149,16 @@ module mpp_parameter_mod
   integer, parameter :: COMM_TAG_17 = 17, COMM_TAG_18 = 18, COMM_TAG_19 = 19, COMM_TAG_20 = 20
 
   integer, parameter :: ROOT_GLOBAL = 9
-  integer, parameter :: GLOBAL_ROOT_ONLY = 2**ROOT_GLOBAL 
-  real(DOUBLE_KIND), parameter :: NULLTIME=-1.
+  integer, parameter :: GLOBAL_ROOT_ONLY = 2**ROOT_GLOBAL
+  real(r8_kind), parameter :: NULLTIME=-1.
 #ifdef LARGE_FILE
-  integer(LONG_KIND), parameter :: MAX_FILE_SIZE = 4294967295
+  integer(i8_kind), parameter :: MAX_FILE_SIZE = 4294967295
 #else
-  integer(LONG_KIND), parameter :: MAX_FILE_SIZE = 2147483647
+  integer(i8_kind), parameter :: MAX_FILE_SIZE = 2147483647
 #endif
 
   !#####################################################################
 
 end module mpp_parameter_mod
+!> @}
+! close documentation grouping

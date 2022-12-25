@@ -16,32 +16,18 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup time_interp_mod time_interp_mod
+!> @ingroup time_interp
+!> @brief Computes a weight and dates/indices for linearly interpolating between two dates.
+!> @author Bruce Wyman
+!!
+!! A time type is converted into two consecutive dates plus
+!! a fraction representing the distance between the dates.
+!! This information can be used to interpolate between the dates.
+!! The dates may be expressed as years, months, or days or
+!! as indices in an array.
 
 module time_interp_mod
-
-! <CONTACT EMAIL="Bruce.Wyman@noaa.gov">
-!   Bruce Wyman
-! </CONTACT>
-
-! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
-
-! <OVERVIEW>
-!   Computes a weight and dates/indices for linearly interpolating between two dates.
-! </OVERVIEW>
-
-! <DESCRIPTION>
-!     A time type is converted into two consecutive dates plus
-!     a fraction representing the distance between the dates.
-!     This information can be used to interpolate between the dates.
-!     The dates may be expressed as years, months, or days or
-!     as indices in an array.
-! </DESCRIPTION>
-
-! <PUBLIC>
-!   Description summarizing public interface.
-! </PUBLIC>
-
-!-----------------------------------------------------------------------
 
 use time_manager_mod, only: time_type, get_date, set_date, set_time, &
                             days_in_year, days_in_month, leap_year,  &
@@ -55,7 +41,7 @@ use time_manager_mod, only: time_type, get_date, set_date, set_time, &
 
 use          fms_mod, only: write_version_number, &
                             error_mesg, FATAL, stdout, stdlog, &
-                            open_namelist_file, close_file, check_nml_error, &
+                            check_nml_error, &
                             fms_error_handler
 use          mpp_mod, only: input_nml_file
 
@@ -119,7 +105,7 @@ public :: time_interp_init, time_interp, fraction_of_year
 !     5. call time_interp( Time, Timelist, weight, index1, index2 [, modtime] )
 !   </TEMPLATE>
 !   <TEMPLATE>
-!     6. call time_interp( Time, Time_beg, Time_end, Timelist, weight, index1, index2 [,correct_leap_year_inconsistency])
+! 6. call time_interp( Time, Time_beg, Time_end, Timelist, weight, index1, index2 [,correct_leap_year_inconsistency])
 !   </TEMPLATE>
 !   <IN NAME="Time">
 !      The time at which the the weight is computed.
@@ -194,6 +180,51 @@ public :: time_interp_init, time_interp, fraction_of_year
 !     </PRE>
 !   </NOTE>
 
+!> Returns a weight and dates or indices for interpolating between two dates. The
+!! interface fraction_of_year is provided for backward compatibility with the
+!! previous version.\n
+!!
+!! Returns weight by interpolating Time between Time1 and Time2.
+!! i.e. weight = (Time-Time1)/(Time2-Time1)
+!! Time1 and Time2 may be specified by any of several different ways,
+!! which is the reason for multiple interfaces.\n
+!!
+!! - If Time1 and Time2 are the begining and end of the year in which
+!!   Time falls, use first interface.\n
+!!
+!! - If Time1 and Time2 fall on year boundaries, use second interface.\n
+!!
+!! - If Time1 and Time2 fall on month boundaries, use third.\n
+!!
+!! - If Time1 and Time2 fall on day boundaries, use fourth.\n
+!!
+!! - If Time1 and Time2 are consecutive elements of an assending list, use fifth.
+!!   The fifth also returns the indices of Timelist between which Time falls.\n
+!!
+!! - The sixth interface is for cyclical data. Time_beg and Time_end specify the
+!!   begining and end of a repeating period. In this case:<br>
+!!              weight = (Time_adjusted - Time1) / (Time2 - Time1)
+!! <br>Where:
+!! @code{.F90}
+!!              Time1 = Timelist(index1)
+!!              Time2 = Timelist(index2)
+!!              Time_adjusted = Time - N*Period
+!!              Period = Time_end-Time_beg
+!! @endcode
+!! N is between (Time-Time_end)/Period and (Time-Time_beg)/Period
+!! That is, N is the integer that results in Time_adjusted that is between Time_beg and Time_end.
+!!
+!! <br>Example usages:
+!! @code{.F90}
+!!              call time_interp( Time, weight )
+!!              call time_interp( Time, weight, year1, year2 )
+!!              call time_interp( Time, weight, year1, year2, month1, month2 )
+!!              call time_interp( Time, weight, year1, year2, month1, month2, day1, day2 )
+!!              call time_interp( Time, Timelist, weight, index1, index2 [, modtime] )
+!!              call time_interp( Time, Time_beg, Time_end, Timelist, weight, index1, index2
+!!              [,correct_leap_year_inconsistency])
+!! @endcode
+!> @ingroup time_interp_mod
 interface time_interp
     module procedure time_interp_frac,  time_interp_year, &
                      time_interp_month, time_interp_day,  &
@@ -201,6 +232,8 @@ interface time_interp
 end interface
 ! </INTERFACE>
 
+!> @addtogroup time_interp_mod
+!> @{
 integer, public, parameter :: NONE=0, YEAR=1, MONTH=2, DAY=3
 
 !-----------------------------------------------------------------------
@@ -227,22 +260,12 @@ contains
 
 
  subroutine time_interp_init()
-   integer :: ierr, io, namelist_unit, logunit
+   integer :: ierr, io, logunit
 
    if ( module_is_initialized ) return
 
-#ifdef INTERNAL_FILE_NML
-      read (input_nml_file, time_interp_nml, iostat=io)
-      ierr = check_nml_error (io, 'time_interp_nml')
-#else
-   namelist_unit = open_namelist_file()
-   ierr=1
-   do while (ierr /= 0)
-     read(namelist_unit, nml=time_interp_nml, iostat=io, end=20)
-     ierr = check_nml_error (io, 'time_interp_nml')
-   enddo
-   20 call close_file (namelist_unit)
-#endif
+   read (input_nml_file, time_interp_nml, iostat=io)
+   ierr = check_nml_error (io, 'time_interp_nml')
 
    call write_version_number("TIME_INTERP_MOD", version)
    logunit = stdlog()
@@ -258,12 +281,11 @@ contains
 !   <IN NAME="Time" TYPE="time_type" > </IN>
 !   <OUT NAME="weight" TYPE="real"> </OUT>
 ! </SUBROUTINE>
-!  returns the fractional time into the current year
-
+ !> @brief Calculates the fractional time into the current year
  subroutine time_interp_frac ( Time, weight )
 
    type(time_type), intent(in)  :: Time
-   real           , intent(out) :: weight
+   real           , intent(out) :: weight !< fractional time
 
    integer         :: year, month, day, hour, minute, second
    type(time_type) :: Year_beg, Year_end
@@ -278,7 +300,7 @@ contains
      Year_beg = set_date(year  , 1, 1)
      Year_end = set_date(year+1, 1, 1)
 
-     weight = (Time - Year_beg) // (Year_end - Year_beg)
+     weight = real( (Time - Year_beg) // (Year_end - Year_beg) )
 
  end subroutine time_interp_frac
 
@@ -289,6 +311,9 @@ contains
 ! </OVERVIEW>
 ! </SUBROUTINE>
 
+!> @brief Wrapper function to return the fractional time into the current year
+!> @param Time time to calculate fraction with
+!> @return real fraction of time passed in current year
  function fraction_of_year (Time)
  type(time_type), intent(in)  :: Time
  real :: fraction_of_year
@@ -306,10 +331,11 @@ contains
 ! </SUBROUTINE>
 !  returns fractional time between mid points of consecutive years
 
+ !> @brief Calculates fractional time between mid points of consecutive years
  subroutine time_interp_year ( Time, weight, year1, year2 )
 
    type(time_type), intent(in)  :: Time
-   real           , intent(out) :: weight
+   real           , intent(out) :: weight !< fractional time between midpoints of year1 and year2
    integer        , intent(out) :: year1, year2
 
    integer :: year, month, day, hour, minute, second
@@ -328,13 +354,13 @@ contains
            year1  = year
            year2  = year+1
            Mid_year2 = year_midpt(year2)
-           weight = (Time - Mid_year) // (Mid_year2 - Mid_year)
+           weight = real( (Time - Mid_year) // (Mid_year2 - Mid_year) )
       else
     ! current time is before mid point of current year
            year2  = year
            year1  = year-1
            Mid_year1 = year_midpt(year1)
-           weight = (Time - Mid_year1) // (Mid_year - Mid_year1)
+           weight = real( (Time - Mid_year1) // (Mid_year - Mid_year1) )
       endif
 
  end subroutine time_interp_year
@@ -348,8 +374,7 @@ contains
 !   <OUT NAME="month1" TYPE="integer"> </OUT>
 !   <OUT NAME="month2" TYPE="integer"> </OUT>
 ! </SUBROUTINE>
-!  returns fractional time between mid points of consecutive months
-
+ !> @brief Calculates fractional time between mid points of consecutive months
  subroutine time_interp_month ( Time, weight, year1, year2, month1, month2 )
 
    type(time_type), intent(in)  :: Time
@@ -410,8 +435,7 @@ contains
 !   <OUT NAME="day1" TYPE="integer"> </OUT>
 !   <OUT NAME="day2" TYPE="integer"> </OUT>
 ! </SUBROUTINE>
-!  returns fractional time between mid points of consecutive days
-
+ !> @brief Calculates fractional time between mid points of consecutive days
  subroutine time_interp_day ( Time, weight, year1, year2, month1, month2, day1, day2 )
 
    type(time_type), intent(in)  :: Time
@@ -481,7 +505,14 @@ subroutine time_interp_modulo(Time, Time_beg, Time_end, Timelist, weight, index1
 type(time_type), intent(in)  :: Time, Time_beg, Time_end, Timelist(:)
 real           , intent(out) :: weight
 integer        , intent(out) :: index1, index2
-logical, intent(in), optional :: correct_leap_year_inconsistency
+logical, intent(in), optional :: correct_leap_year_inconsistency!< When true turns on a kluge for an
+                                !! inconsistency which may occur in a special case.
+                                !! When the modulo time period (i.e. Time_end - Time_beg) is a
+                                !! whole number of years and is not a multiple of 4, and the calendar
+                                !! in use has leap years, then it is likely that the interpolation
+                                !! will involve mapping a common year onto a leap year. In this case
+                                !! it is often desirable, but not absolutely necessary, to use data
+                                !! for Feb 28 of the leap year when it is mapped onto a common year.
 character(len=*), intent(out), optional :: err_msg
 
   type(time_type) :: Period, T
@@ -622,24 +653,24 @@ character(len=*), intent(out), optional :: err_msg
   if( T>=Timelist(ie) ) then
      ! time is after the end of the portion of the time list within the requested period
      index1 = ie;   index2 = is
-     weight = (T-Timelist(ie))//(Period-(Timelist(ie)-Timelist(is)))
+     weight = real( (T-Timelist(ie))//(Period-(Timelist(ie)-Timelist(is))) )
   else if (T<Timelist(is)) then
      ! time is before the beginning of the portion of the time list within the requested period
      index1 = ie;   index2 = is
-     weight = 1.0-((Timelist(is)-T)//(Period-(Timelist(ie)-Timelist(is))))
+     weight = real( 1.0-((Timelist(is)-T)//(Period-(Timelist(ie)-Timelist(is)))) )
   else
      call bisect(Timelist,T,index1,index2)
-     weight = (T-Timelist(index1)) // (Timelist(index2)-Timelist(index1))
+     weight = real( (T-Timelist(index1)) // (Timelist(index2)-Timelist(index1)) )
   endif
 
 end subroutine time_interp_modulo
 
 !#######################################################################
-! given an array of times in ascending order and a specific time returns
-! values of index1 and index2 such that the Timelist(index1)<=Time and
-! Time<=Timelist(index2), and index2=index1+1
-! index1=0, index2=1 or index=n, index2=n+1 are returned to indicate that
-! the time is out of range
+!> Given an array of times in ascending order and a specific time returns
+!! values of index1 and index2 such that the Timelist(index1)<=Time and
+!! Time<=Timelist(index2), and index2=index1+1
+!! index1=0, index2=1 or index=n, index2=n+1 are returned to indicate that
+!! the time is out of range
 subroutine bisect(Timelist,Time,index1,index2)
   type(time_type)  , intent(in)  :: Timelist(:)
   type(time_type)  , intent(in)  :: Time
@@ -751,7 +782,7 @@ character(len=:),allocatable :: terr, tserr, teerr
 ! time falls on start or between start and end list values
   if ( T >= Ts .and. T < Te ) then
      call bisect(Timelist(1:n),T,index1,index2)
-     weight = (T-Timelist(index1)) // (Timelist(index2)-Timelist(index1))
+     weight = real( (T-Timelist(index1)) // (Timelist(index2)-Timelist(index1)) )
 
 ! time falls before starting list value
   else if ( T < Ts ) then
@@ -766,7 +797,7 @@ character(len=:),allocatable :: terr, tserr, teerr
         deallocate(terr,tserr,teerr)
      endif
      Td = Te-Ts
-     weight = 1. - ((Ts-T) // (Period-Td))
+     weight = real( 1. - ((Ts-T) // (Period-Td)) )
      index1 = n
      index2 = 1
 
@@ -799,7 +830,7 @@ character(len=:),allocatable :: terr, tserr, teerr
         deallocate(terr,tserr,teerr)
      endif
      Td = Te-Ts
-     weight = (T-Te) // (Period-Td)
+     weight = real( (T-Te) // (Period-Td) )
      index1 = n
      index2 = 1
   endif
@@ -936,283 +967,5 @@ end module time_interp_mod
 !   </NOTE>
 
 ! </INFO>
-
-#ifdef test_time_interp_
- program test_time_interp
- use          fms_mod, only: fms_init, fms_end, stdout, stdlog, FATAL, mpp_error
- use time_manager_mod, only: get_date, set_time, set_date, time_manager_init, set_calendar_type, operator(+)
- use time_manager_mod, only: JULIAN, time_type, increment_time, NOLEAP, print_date
- use  time_interp_mod, only: time_interp_init, time_interp, NONE, YEAR, MONTH, DAY
-
- implicit none
-
- integer, parameter :: num_Time=6
- type(time_type) :: Time_beg, Time_end, Time(num_Time)
- type(time_type), allocatable, dimension(:) :: Timelist
- integer :: index1, index2, mo, yr, timelist_len, outunit, ntest, nline
- real :: weight
-
- integer :: nmin, nmax
-
- namelist / test_time_interp_nml / timelist_len
-
- call fms_init
- outunit = stdout()
- call set_calendar_type(JULIAN)
- call time_interp_init
-
- Time_beg = set_date(1, 1, 1)
- Time_end = set_date(2, 1, 1)
- Time(1) = Time_beg
- Time(2) = set_date(1, 1,16)
- Time(3) = set_date(1, 2, 1)
- Time(4) = set_date(1,12, 1)
- Time(5) = set_date(1,12,16)
- Time(6) = Time_end
-
-! Tests with modulo time
- do nline=1,3
-   if(nline == 1) then
-     allocate(Timelist(12))
-     do mo=1,12
-       Timelist(mo) = set_date(1, mo, 1)
-     enddo
-   else if(nline == 2) then
-     allocate(Timelist(13))
-     do mo=1,12
-       Timelist(mo) = set_date(1, mo, 1)
-     enddo
-     Timelist(13) = set_date(2, 1, 1)
-   else if(nline == 3) then
-     allocate(Timelist(12))
-     do mo=2,12
-       Timelist(mo-1) = set_date(1, mo, 1)
-     enddo
-     Timelist(12) = set_date(2, 1, 1)
-   endif
-
-   do ntest=1,num_Time
-     call diagram(nline,ntest,modulo_time=.true.)
-     call time_interp(Time(ntest), Time_beg, Time_end, Timelist, weight, index1, index2)
-     write(outunit,*) 'time_interp_modulo:'
-     write(outunit,'()')
-     call print_date(Time(ntest),                'Time       =')
-     call print_date(Time_beg,                   'Time_beg   =')
-     call print_date(Time_end,                   'Time_end   =')
-     call print_date(Timelist(1),                'Timelist(1)=')
-     call print_date(Timelist(size(Timelist(:))),'Timelist(n)=')
-     write(outunit,99) index1,index2,weight
-     write(outunit,'()')
-
-     call time_interp(Time(ntest), Timelist, weight, index1, index2, modtime=YEAR)
-     write(outunit,*) 'time_interp_list with modtime=YEAR:'
-     write(outunit,'()')
-     call print_date(Time(ntest),                'Time       =')
-     call print_date(Timelist(1),                'Timelist(1)=')
-     call print_date(Timelist(size(Timelist(:))),'Timelist(n)=')
-     write(outunit,99) index1,index2,weight
-   enddo
-   deallocate(Timelist)
- enddo
-
-! Tests without modulo time
- do nline=1,3
-   if(nline == 1) then
-     allocate(Timelist(12))
-     do mo=1,12
-       Timelist(mo) = set_date(1, mo, 1)
-     enddo
-   else if(nline == 2) then
-     allocate(Timelist(13))
-     do mo=1,12
-       Timelist(mo) = set_date(1, mo, 1)
-     enddo
-     Timelist(13) = set_date(2, 1, 1)
-   else if(nline == 3) then
-     allocate(Timelist(12))
-     do mo=2,12
-       Timelist(mo-1) = set_date(1, mo, 1)
-     enddo
-     Timelist(12) = set_date(2, 1, 1)
-   endif
-
-   if(nline == 1) then
-     nmin = 1; nmax = 4
-   else if(nline == 2) then
-     nmin = 1; nmax = num_Time
-   else if(nline == 3) then
-     nmin = 3; nmax = num_Time
-   endif
-   do ntest=nmin,nmax
-     call diagram(nline,ntest,modulo_time=.false.)
-     call time_interp(Time(ntest), Timelist, weight, index1, index2, modtime=NONE)
-     write(outunit,*) 'time_interp_list with modtime=NONE:'
-     write(outunit,'()')
-     call print_date(Time(ntest),                'Time       =')
-     call print_date(Timelist(1),                'Timelist(1)=')
-     call print_date(Timelist(size(Timelist(:))),'Timelist(n)=')
-     write(outunit,99) index1,index2,weight
-   enddo
-   deallocate(Timelist)
- enddo
-
-! More tests with modulo time
- Time_beg = set_date(1999, 1, 1)
- Time_end = set_date(2000, 1, 1)
- Time(1)  = set_date(1998, 1, 1)
- Time(2)  = set_date(1998, 2,28)
- Time(3)  = set_date(1998,12,16)
- Time(4)  = set_date(2000, 1, 1)
- Time(5)  = set_date(2000, 2,28)
- Time(6)  = set_date(2000, 2,29)
-
- allocate(Timelist(13))
- do mo=1,12
-   Timelist(mo) = set_date(1999, mo, 1)
- enddo
- Timelist(13) = set_date(2000, 1, 1)
-
- write(outunit,'("<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>",/)')
- write(outunit,'()')
- write(outunit,*) 'time_interp_modulo with correct_leap_year_inconsistency=.true.'
- write(outunit,'()')
- write(outunit,'(" Jan 1 1999                                     Jan 1 2000")')
- write(outunit,'("    |                                               |")')
- write(outunit,'("    v                                               v")')
- write(outunit,'("    x---x---x---x---x---x---x---x---x---x---x---x---x")')
- write(outunit,'("    ^                                               ^")')
- write(outunit,'("    |                                               |")')
- write(outunit,'(" Time_beg                                        Time_end ")')
- write(outunit,'()')
-
- do ntest=1,num_Time
-   call time_interp(Time(ntest), Time_beg, Time_end, Timelist, weight, index1, index2, correct_leap_year_inconsistency=.true.)
-   call print_date(Time(ntest),' Time =')
-   write(outunit,99) index1,index2,weight
-   write(outunit,'()')
- enddo
- deallocate(Timelist)
-
-! Tests of modulo time and leap year inconsistency
- Time_beg = set_date(1978, 1, 1)
- Time_end = set_date(1981, 1, 1)
- Time(1)  = set_date(1976, 2,28)
- Time(2)  = set_date(1976, 2,29)
- Time(3)  = set_date(1976, 3, 1)
- Time(4)  = set_date(1983, 2,28)
- Time(5)  = set_date(1983, 3, 1)
- Time(6)  = set_date(1981, 1, 1)
- allocate(Timelist(37))
- do yr=1978,1980
-   do mo=1,12
-     Timelist(12*(yr-1978)+mo) = set_date(yr, mo, 1)
-   enddo
- enddo
- Timelist(37) = set_date(1981, 1, 1)
-
- write(outunit,'("<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>")')
- write(outunit,'()')
- write(outunit,*) 'time_interp_modulo with correct_leap_year_inconsistency=.true.'
- write(outunit,'()')
- write(outunit,'(" Jan 1 1978              Jan 1 1979              Jan 1 1980              Jan 1 1981")')
- write(outunit,'("     |                       |                       | <---- leap year ----> |")')
- write(outunit,'("     v                       v                       v                       v")')
- write(outunit,'("     x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x-x")')
- write(outunit,'("     ^                                                                       ^")')
- write(outunit,'("     |                                                                       |")')
- write(outunit,'("  Time_beg                                                               Time_end")')
- write(outunit,'()')
-
- do ntest=1,num_Time
-   call time_interp(Time(ntest), Time_beg, Time_end, Timelist, weight, index1, index2, correct_leap_year_inconsistency=.true.)
-   call print_date(Time(ntest),' Time=')
-   write(outunit,99) index1,index2,weight
-   write(outunit,'()')
- enddo
- deallocate(Timelist)
-
- allocate(Timelist(12))
- Timelist( 1) = set_date(1,  1, 16, hour=12) ! Jan midmonth
- Timelist( 2) = set_date(1,  2, 15, hour= 0) ! Feb midmonth (common year)
- Timelist( 3) = set_date(1,  3, 16, hour=12) ! Mar midmonth
- Timelist( 4) = set_date(1,  4, 16, hour= 0) ! Apr midmonth
- Timelist( 5) = set_date(1,  5, 16, hour=12) ! May midmonth
- Timelist( 6) = set_date(1,  6, 16, hour= 0) ! Jun midmonth
- Timelist( 7) = set_date(1,  7, 16, hour=12) ! Jul midmonth
- Timelist( 8) = set_date(1,  8, 16, hour=12) ! Aug midmonth
- Timelist( 9) = set_date(1,  9, 16, hour= 0) ! Sep midmonth
- Timelist(10) = set_date(1, 10, 16, hour=12) ! Oct midmonth
- Timelist(11) = set_date(1, 11, 16, hour= 0) ! Nov midmonth
- Timelist(12) = set_date(1, 12, 16, hour=12) ! Dec midmonth
- Time_beg = set_date(1, 1, 1)
- Time_end = set_date(2, 1, 1)
- call diagram(nline=4, ntest=0, modulo_time=.true.)
- do ntest=0,73
-   Time(1) = set_date(1996, 1, 1) + set_time(seconds=0, days=5*ntest)
-   call print_date(Time(1),' Time=')
-   call time_interp(Time(1), Timelist, weight, index1, index2, modtime=YEAR)
-   write(outunit,89) 'time_interp_list with modtime=YEAR:   ', index1,index2,weight
-   call time_interp(Time(1), Time_beg, Time_end, Timelist, weight, index1, index2, correct_leap_year_inconsistency=.true.)
-   write(outunit,89) 'time_interp_modulo: ', index1,index2,weight
-   write(outunit,'()')
- enddo
-
- 99 format(' index1=',i3,'  index2=',i3,'  weight=',f18.15)
- 89 format(a20,' index1=',i3,'  index2=',i3,'  weight=',f18.15)
- call fms_end
-
- contains
-
- subroutine diagram(nline,ntest,modulo_time)
- integer, intent(in) :: nline,ntest
- logical, intent(in) :: modulo_time
-
- write(outunit,'("<><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><><>")')
- write(outunit,'()')
- if(modulo_time) then
-   write(outunit,'(" Time_beg                                      Time_end")')
-   write(outunit,'("  |                                               |")')
-   write(outunit,'("  v                                               v")')
- endif
-
- if(nline == 1) then
-   write(outunit,'("  x---x---x---x---x---x---x---x---x---x---x---x----")')
- else if(nline == 2) then
-   write(outunit,'("  x---x---x---x---x---x---x---x---x---x---x---x---x")')
- else if(nline == 3) then
-   write(outunit,'("  ----x---x---x---x---x---x---x---x---x---x---x---x")')
- else if(nline == 4) then
-   write(outunit,'("  --x---x---x---x---x---x---x---x---x---x---x---x--")')
- endif
-
- if(ntest == 1) then
-   write(outunit,'("  ^")  ')
-   write(outunit,'("  |")  ')
-   write(outunit,'(" Time")')
- else if(ntest == 2) then
-   write(outunit,'("    ^")  ')
-   write(outunit,'("    |")  ')
-   write(outunit,'("   Time")')
- else if(ntest == 3) then
-   write(outunit,'("      ^")  ')
-   write(outunit,'("      |")  ')
-   write(outunit,'("     Time")')
- else if(ntest == 4) then
-   write(outunit,'("                                              ^")  ')
-   write(outunit,'("                                              |")  ')
-   write(outunit,'("                                             Time")')
- else if(ntest == 5) then
-   write(outunit,'("                                                ^")  ')
-   write(outunit,'("                                                |")  ')
-   write(outunit,'("                                               Time")')
- else if(ntest == 6) then
-   write(outunit,'("                                                  ^")  ')
-   write(outunit,'("                                                  |")  ')
-   write(outunit,'("                                                 Time")')
- endif
- write(outunit,'()')
-
- end subroutine diagram
-
- end program test_time_interp
-#endif
+!> @}
+! close documentation grouping

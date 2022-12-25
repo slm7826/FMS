@@ -1,6 +1,6 @@
 module monin_obukhov_functions_mod
 
-#define _PURE
+#define _PURE pure
 !#include <fms_platform.h>
 
 use, intrinsic :: ieee_arithmetic
@@ -1111,7 +1111,7 @@ _PURE subroutine RSL_lookup_I(most,a,b,table,p,s,ierr)
   i = bisect(most%a,a)
   if (i<1) then
       ! bisect did not find appropriate interval for interpolation
-      write(*,'(a,99(g15.6))') 'a=z_1/z_R is out of bounds :: ',a,most%a(1),most%a(size(most%a))
+      ! write(*,'(a,99(g15.6))') 'a=z_1/z_R is out of bounds :: ',a,most%a(1),most%a(size(most%a))
       return
   else if (i>=size(most%a)) then
       ! we assume that integral betweel large z_1/z_R and infinity is close to zero

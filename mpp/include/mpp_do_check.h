@@ -1,4 +1,4 @@
-! -*-f90-*- 
+! -*-f90-*-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -17,12 +17,18 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @file
+!> @brief Updates data domain of 3D field whose computational domains have been computed
+
+!> @addtogroup mpp_domains_mod
+!> @{
+
+    !> Updates data domain of 3D field whose computational domains have been computed
     subroutine MPP_DO_CHECK_3D_( f_addrs, domain, check, d_type, ke, flags, name)
-!updates data domain of 3D field whose computational domains have been computed
-      integer(LONG_KIND),         intent(in) :: f_addrs(:,:)
+      integer(i8_kind),         intent(in) :: f_addrs(:,:)
       type(domain2D),             intent(in) :: domain
       type(overlapSpec),          intent(in) :: check
-      MPP_TYPE_,                  intent(in) :: d_type  ! creates unique interface
+      MPP_TYPE_,                  intent(in) :: d_type  !<creates unique interface
       integer,                    intent(in) :: ke
       integer, optional,          intent(in) :: flags
       character(len=*), optional, intent(in) :: name
@@ -31,13 +37,13 @@
       pointer(ptr_field, field)
       integer                     :: update_flags
       character(len=8)            :: text
-      character(len=64)           :: field_name      
+      character(len=64)           :: field_name
 
 !equate to mpp_domains_stack
       MPP_TYPE_ :: buffer(size(mpp_domains_stack(:)))
       pointer( ptr, buffer )
       integer :: buffer_pos
-      integer,    allocatable :: msg1(:), msg2(:)     
+      integer,    allocatable :: msg1(:), msg2(:)
 !receive domains saved here for unpacking
 !for non-blocking version, could be recomputed
       integer :: to_pe, from_pe, pos, msgsize
@@ -53,10 +59,10 @@
       update_flags = XUPDATE+YUPDATE   !default
       if( PRESENT(flags) )update_flags = flags
 
-      !--- if debug_update_level is not NO_DEBUG, check the consistency on the bounds 
+      !--- if debug_update_level is not NO_DEBUG, check the consistency on the bounds
       !--- (domain is symmetry or folded north edge). North bound will be checked when north edge is folded.
-      !--- when domain is symmetry, For data on T-cell, no check is needed; for data on E-cell, 
-      !--- data on East and West boundary will be checked ; For data on N-cell, data on North and South 
+      !--- when domain is symmetry, For data on T-cell, no check is needed; for data on E-cell,
+      !--- data on East and West boundary will be checked ; For data on N-cell, data on North and South
       !--- boundary will be checked; For data on C-cell, data on West, East, South, North will be checked.
       !--- The check will be done in the following way: Western boundary data sent to Eastern boundary to check
       !--- and Southern boundary to check
@@ -68,7 +74,7 @@
       end if
 
       if(debug_message_passing) then
-         nlist = size(domain%list(:))  
+         nlist = size(domain%list(:))
          allocate(msg1(0:nlist-1), msg2(0:nlist-1) )
          msg1 = 0
          msg2 = 0
@@ -109,8 +115,8 @@
          deallocate(msg1, msg2)
       endif
 
-      buffer_pos = 0        
-      !--- pre-post recv the data 
+      buffer_pos = 0
+      !--- pre-post recv the data
       do m = 1, check%nrecv
          msgsize = 0
          do n = 1, check%recv(m)%count
@@ -145,7 +151,7 @@
             case(ZERO)
                do l = 1, l_size ! loop over number of fields
                   ptr_field = f_addrs(l, tMe)
-                  do k = 1,ke  
+                  do k = 1,ke
                      do j = js, je
                         do i = is, ie
                            pos = pos + 1
@@ -157,7 +163,7 @@
             case(MINUS_NINETY)
                do l = 1, l_size ! loop over number of fields
                   ptr_field = f_addrs(l, tMe)
-                  do k = 1,ke  
+                  do k = 1,ke
                      do j = je, js, -1
                         do i = is, ie
 
@@ -170,7 +176,7 @@
             case(NINETY)
                do l = 1, l_size ! loop over number of fields
                   ptr_field = f_addrs(l, tMe)
-                  do k = 1,ke  
+                  do k = 1,ke
                      do j = js, je
                         do i = ie, is, -1
 
@@ -183,7 +189,7 @@
             case(ONE_HUNDRED_EIGHTY)
                do l = 1, l_size ! loop over number of fields
                   ptr_field = f_addrs(l, tMe)
-                  do k = 1,ke  
+                  do k = 1,ke
                      do j = je, js, -1
                         do i = ie, is, -1
                            pos = pos + 1
@@ -229,7 +235,8 @@
                            print*,"Error from MPP_DO_CHECK on pe = ", mpp_pe(), ": field ", &
                                 trim(field_name), " at point (", i, ",", j, ",", k, ") = ", field(i,j,k), &
                                 " does not equal to the value = ", buffer(pos), " on pe ", check%recv(m)%pe
-                           call mpp_error(debug_update_level, "MPP_DO_CHECK: mismatch on the boundary for symmetry point")
+                           call mpp_error(debug_update_level, &
+                                          &  "MPP_DO_CHECK: mismatch on the boundary for symmetry point")
                            exit CHECK_LOOP
                         end if
                      end do
@@ -242,3 +249,4 @@
 
       return
     end subroutine MPP_DO_CHECK_3D_
+!> @}

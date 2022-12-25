@@ -1,4 +1,4 @@
-! -*-f90-*- 
+! -*-f90-*-
 !***********************************************************************
 !*                   GNU Lesser General Public License
 !*
@@ -17,9 +17,12 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
-subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, ke_max, ke_list, flags, reuse_id_update, name)
+!> @addtogroup mpp_domains_mod
+!> @{
+subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, ke_max, ke_list, flags, &
+                                  &  reuse_id_update, name)
   integer,                    intent(in) :: id_update
-  integer(LONG_KIND),         intent(in) :: f_addrs(:,:)
+  integer(i8_kind),         intent(in) :: f_addrs(:,:)
   type(domain2D),             intent(in) :: domain
   type(overlapSpec),          intent(in) :: update
   MPP_TYPE_,                  intent(in) :: d_type  ! creates unique interface
@@ -28,13 +31,13 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
   logical,                    intent(in) :: reuse_id_update
   character(len=*),           intent(in) :: name
   integer,                    intent(in) :: flags
-  
+
   !--- local variables
   integer                     :: i, j, k, m, n, l, dir, tMe
   integer                     :: buffer_pos, msgsize, from_pe, to_pe, pos
   integer                     :: is, ie, js, je, sendsize, recvsize
   logical                     :: send(8), recv(8), update_edge_only
-  integer                     :: l_size, ke_sum, my_id_update
+  integer                     :: l_size, ke_sum
   integer                     :: request
   integer                     :: send_msgsize(MAXLIST)
   character(len=128)          :: text
@@ -89,7 +92,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
      do n = 1, update%recv(m)%count
         dir = update%recv(m)%dir(n)
         if(recv(dir)) then
-           msgsize = msgsize + update%recv(m)%msgsize(n)           
+           msgsize = msgsize + update%recv(m)%msgsize(n)
         end if
      end do
      if( msgsize.GT.0 )then
@@ -100,7 +103,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
         buffer_pos = buffer_pos + msgsize
      end if
   end do
-     
+
   sendsize = 0
   do m = 1, update%nsend
      if( update%send(m)%count == 0 )cycle
@@ -115,7 +118,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
         msgsize = msgsize*ke_sum
         sendsize = sendsize + msgsize
         nonblock_data(id_update)%buffer_pos_send(m) = buffer_pos
-        buffer_pos = buffer_pos + msgsize        
+        buffer_pos = buffer_pos + msgsize
      end if
   end do
 
@@ -156,7 +159,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
         nonblock_data(id_update)%type_recv(m) = MPI_TYPE_
 #endif
      end if
-  end do ! end do m = 1, update%nrecv  
+  end do ! end do m = 1, update%nrecv
 
   call mpp_clock_end(recv_clock_nonblock)
 
@@ -167,7 +170,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
   do m = 1, update%nsend
      send_msgsize(m) = 0
      if( update%send(m)%count == 0 )cycle
-     
+
      buffer_pos = nonblock_data(id_update)%buffer_pos_send(m)
      pos = buffer_pos
 
@@ -181,7 +184,7 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
            case(ZERO)
               do l=1,l_size  ! loop over number of fields
                  ptr_field = f_addrs(l, tMe)
-                 do k = 1,ke_list(l,tMe)  
+                 do k = 1,ke_list(l,tMe)
                     do j = js, je
                        do i = is, ie
                           pos = pos + 1
@@ -190,10 +193,10 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
                     end do
                  end do
               enddo
-           case( MINUS_NINETY ) 
+           case( MINUS_NINETY )
               do l=1,l_size  ! loop over number of fields
                  ptr_field = f_addrs(l, tMe)
-                 do k = 1,ke_list(l,tMe)  
+                 do k = 1,ke_list(l,tMe)
                     do i = is, ie
                        do j = je, js, -1
                           pos = pos + 1
@@ -202,11 +205,11 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
                     end do
                  end do
               end do
-           case( NINETY ) 
+           case( NINETY )
               do l=1,l_size  ! loop over number of fields
                  ptr_field = f_addrs(l, tMe)
 
-                 do k = 1,ke_list(l,tMe)  
+                 do k = 1,ke_list(l,tMe)
                     do i = ie, is, -1
                        do j = js, je
                           pos = pos + 1
@@ -215,10 +218,10 @@ subroutine MPP_START_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, k
                     end do
                  end do
               end do
-           case( ONE_HUNDRED_EIGHTY ) 
+           case( ONE_HUNDRED_EIGHTY )
               do l=1,l_size  ! loop over number of fields
                  ptr_field = f_addrs(l, tMe)
-                 do k = 1,ke_list(l,tMe)  
+                 do k = 1,ke_list(l,tMe)
                     do j = je, js, -1
                        do i = ie, is, -1
                           pos = pos + 1
@@ -254,9 +257,9 @@ end subroutine MPP_START_DO_UPDATE_3D_
 
 !###############################################################################
 
-subroutine MPP_COMPLETE_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, ke_max, ke_list, flags) 
+subroutine MPP_COMPLETE_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type, ke_max, ke_list, flags)
   integer,             intent(in) :: id_update
-  integer(LONG_KIND),  intent(in) :: f_addrs(:,:)
+  integer(i8_kind),  intent(in) :: f_addrs(:,:)
   type(domain2d),      intent(in) :: domain
   type(overlapSpec),   intent(in) :: update
   integer,             intent(in) :: ke_max
@@ -265,18 +268,18 @@ subroutine MPP_COMPLETE_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type
   integer,             intent(in) :: flags
 
   !--- local variables
-  integer                     :: i, j, k, m, n, l, dir, count, tMe, tNbr
-  integer                     :: buffer_pos, msgsize, from_pe, pos
+  integer                     :: i, j, k, m, n, l, dir, count, tMe
+  integer                     :: buffer_pos, msgsize, pos
   integer                     :: is, ie, js, je
   logical                     :: send(8), recv(8), update_edge_only
-  integer                     :: l_size, ke_sum, sendsize, recvsize
-  character(len=128)          :: text
+  integer                     :: l_size, ke_sum
   MPP_TYPE_                   :: recv_buffer(size(mpp_domains_stack_nonblock(:)))
   MPP_TYPE_                   :: field(update%xbegin:update%xend, update%ybegin:update%yend,ke_max)
   pointer( ptr, recv_buffer )
   pointer(ptr_field, field)
 
   update_edge_only = BTEST(flags, EDGEONLY)
+  recv = .false.
   recv(1) = BTEST(flags,EAST)
   recv(3) = BTEST(flags,SOUTH)
   recv(5) = BTEST(flags,WEST)
@@ -313,7 +316,7 @@ subroutine MPP_COMPLETE_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type
      nonblock_data(id_update)%request_recv(:)    = 0
 #endif
      nonblock_data(id_update)%type_recv(:) = 0
-  endif 
+  endif
 
   !--unpack the data
   call mpp_clock_begin(unpk_clock_nonblock)
@@ -366,10 +369,11 @@ subroutine MPP_COMPLETE_DO_UPDATE_3D_(id_update, f_addrs, domain, update, d_type
 #else
      nonblock_data(id_update)%request_send(:)    = 0
 #endif
-  endif 
-  
+  endif
+
 !  call init_nonblock_type(nonblock_data(id_update))
 
   return
 
 end subroutine MPP_COMPLETE_DO_UPDATE_3D_
+!> @}

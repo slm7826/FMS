@@ -21,25 +21,22 @@
 !                                  MPP_TRANSMIT                               !
 !                                                                             !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    subroutine MPP_TRANSMIT_( put_data, put_len, to_pe, get_data, get_len, from_pe, block, tag, recv_request, send_request )
-!a message-passing routine intended to be reminiscent equally of both MPI and SHMEM
-
-!put_data and get_data are contiguous MPP_TYPE_ arrays
-
-!at each call, your put_data array is put to   to_pe's get_data
-!              your get_data array is got from from_pe's put_data
-!i.e we assume that typically (e.g updating halo regions) each PE performs a put _and_ a get
-
-!special PE designations:
-!      NULL_PE: to disable a put or a get (e.g at boundaries)
-!      ANY_PE:  if remote PE for the put or get is to be unspecific
-!      ALL_PES: broadcast and collect operations (collect not yet implemented)
-
-!ideally we would not pass length, but this f77-style call performs better (arrays passed by address, not descriptor)
-!further, this permits <length> contiguous words from an array of any rank to be passed (avoiding f90 rank conformance check)
-
-!caller is responsible for completion checks (mpp_sync_self) before and after
+!> @addtogroup mpp_mod
+!> @{
+!> A message-passing routine intended to be reminiscent equally of both MPI and SHMEM
+!! put_data and get_data are contiguous MPP_TYPE_ arrays
+!!at each call, your put_data array is put to   to_pe's get_data
+!!              your get_data array is got from from_pe's put_data
+!!i.e we assume that typically (e.g updating halo regions) each PE performs a put _and_ a get
+!!special PE designations:
+!!      NULL_PE: to disable a put or a get (e.g at boundaries)
+!!      ANY_PE:  if remote PE for the put or get is to be unspecific
+!!      ALL_PES: broadcast and collect operations (collect not yet implemented)
+!!ideally we would not pass length, but this f77-style call performs better (arrays passed by address, not descriptor)
+!!further, this permits <length> contiguous words from an array of any rank to be passed (avoiding f90 rank conformance check)
+!!caller is responsible for completion checks (mpp_sync_self) before and after
+    subroutine MPP_TRANSMIT_( put_data, put_len, to_pe, get_data, get_len, from_pe, block, tag, recv_request, &
+                            &  send_request )
 
       integer, intent(in) :: put_len, to_pe, get_len, from_pe
       MPP_TYPE_, intent(in)  :: put_data(*)
@@ -48,21 +45,21 @@
       integer, intent(in),  optional :: tag
       integer, intent(out), optional :: recv_request, send_request
       logical                       :: block_comm
-      integer                       :: i 
-      MPP_TYPE_, allocatable, save  :: local_data(:) !local copy used by non-parallel code (no SHMEM or MPI)
+      integer                       :: i
       integer                       :: comm_tag
       integer                       :: rsize
 
       if( .NOT.module_is_initialized )call mpp_error( FATAL, 'MPP_TRANSMIT: You must first call mpp_init.' )
       if( to_pe.EQ.NULL_PE .AND. from_pe.EQ.NULL_PE )return
-      
+
       block_comm = .true.
       if(PRESENT(block)) block_comm = block
 
       if( debug )then
           call SYSTEM_CLOCK(tick)
           write( stdout_unit,'(a,i18,a,i6,a,2i6,2i8)' )&
-               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT begin: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, put_len, get_len
+               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT begin: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, &
+                       &  put_len, get_len
       end if
 
       comm_tag = DEFAULT_TAG
@@ -73,7 +70,7 @@
 !use non-blocking sends
           if( debug .and. (current_clock.NE.0) )call SYSTEM_CLOCK(start_tick)
 !z1l: truly non-blocking send.
-!          if( request(to_pe).NE.MPI_REQUEST_NULL )then !only one message from pe->to_pe in queue 
+!          if( request(to_pe).NE.MPI_REQUEST_NULL )then !only one message from pe->to_pe in queue
 !              if( debug )write( stderr(),* )'PE waiting for sending', pe, to_pe
 !              call MPI_WAIT( request(to_pe), stat, error )
 !          end if
@@ -83,7 +80,8 @@
              cur_send_request = cur_send_request + 1
              if( cur_send_request > max_request ) call mpp_error(FATAL, &
                 "MPP_TRANSMIT: cur_send_request is greater than max_request, increase mpp_nml request_multiply")
-             call MPI_ISEND( put_data, put_len, MPI_TYPE_, to_pe, comm_tag, mpp_comm_private, request_send(cur_send_request), error)
+             call MPI_ISEND( put_data, put_len, MPI_TYPE_, to_pe, comm_tag, mpp_comm_private, &
+                             request_send(cur_send_request), error)
           endif
           if( debug .and. (current_clock.NE.0) )call increment_current_clock( EVENT_SEND, put_len*MPP_TYPE_BYTELEN_ )
       else if( to_pe.EQ.ALL_PES )then !this is a broadcast from from_pe
@@ -106,7 +104,7 @@
           call mpp_error( FATAL, 'MPP_TRANSMIT: invalid to_pe.' )
       end if
 
-!do the get: for libSMA, a get means do a wait to ensure put on remote PE is complete
+!do the get
       if( from_pe.GE.0 .AND. from_pe.LT.npes )then
 !receive from from_pe
           if( debug .and. (current_clock.NE.0) )call SYSTEM_CLOCK(start_tick)
@@ -118,7 +116,7 @@
                 call mpp_error(FATAL, "MPP_TRANSMIT: get_len does not match size of data received")
              endif
           else
-!             if( request_recv(from_pe).NE.MPI_REQUEST_NULL )then !only one message from from_pe->pe in queue 
+!             if( request_recv(from_pe).NE.MPI_REQUEST_NULL )then !only one message from from_pe->pe in queue
                 !              if( debug )write( stderr(),* )'PE waiting for receiving', pe, from_pe
 !                call MPI_WAIT( request_recv(from_pe), stat, error )
 !             end if
@@ -128,9 +126,9 @@
              else
                 cur_recv_request = cur_recv_request + 1
                 if( cur_recv_request > max_request ) call mpp_error(FATAL, &
-                "MPP_TRANSMIT: cur_recv_request is greater than max_request, increase mpp_nml request_multiply")             
+                "MPP_TRANSMIT: cur_recv_request is greater than max_request, increase mpp_nml request_multiply")
                 call MPI_IRECV( get_data, get_len, MPI_TYPE_, from_pe, comm_tag, mpp_comm_private, &
-                     request_recv(cur_recv_request), error ) 
+                     request_recv(cur_recv_request), error )
                 size_recv(cur_recv_request) = get_len
                 type_recv(cur_recv_request) = MPI_TYPE_
              endif
@@ -150,7 +148,8 @@
       if( debug )then
           call SYSTEM_CLOCK(tick)
           write( stdout_unit,'(a,i18,a,i6,a,2i6,2i8)' )&
-               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT end: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, put_len, get_len
+               'T=',tick, ' PE=',pe, ' MPP_TRANSMIT end: to_pe, from_pe, put_len, get_len=', to_pe, from_pe, &
+                       &  put_len, get_len
       end if
       return
     end subroutine MPP_TRANSMIT_
@@ -160,7 +159,7 @@
 !                                MPP_BROADCAST                                !
 !                                                                             !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+    !> Broadcasts data to a pelist
     subroutine MPP_BROADCAST_( data, length, from_pe, pelist )
 !this call was originally bundled in with mpp_transmit, but that doesn't allow
 !broadcast to a subset of PEs. This version will, and mpp_transmit will remain
@@ -183,7 +182,7 @@
            call mpp_error( FATAL, 'MPP_BROADCAST: broadcasting from invalid PE.' )
 
       if( debug .and. (current_clock.NE.0) )call SYSTEM_CLOCK(start_tick)
- ! find the rank of from_pe in the pelist.     
+ ! find the rank of from_pe in the pelist.
       do i = 1, mpp_npes()
          if(peset(n)%list(i) == from_pe) then
              from_rank = i - 1
@@ -194,6 +193,6 @@
       if( debug .and. (current_clock.NE.0) )call increment_current_clock( EVENT_BROADCAST, length*MPP_TYPE_BYTELEN_ )
       return
     end subroutine MPP_BROADCAST_
-
+!> @}
 !####################################################################################
 #include <mpp_transmit.inc>

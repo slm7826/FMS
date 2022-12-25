@@ -16,9 +16,15 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup monin_obukhov_mod monin_obukhov_mod
+!> @ingroup monin_obukhov
+!> @brief Routines for computing surface drag coefficients
+!! from data at the lowest model level
+!! and for computing the profile of fields
+!! between the lowest model level and the ground
+!! using Monin-Obukhov scaling
 
 module monin_obukhov_mod
-
 
 !=======================================================================
 !
@@ -35,7 +41,7 @@ module monin_obukhov_mod
 
 use constants_mod, only: grav, vonkarm
 use mpp_mod,       only: input_nml_file
-use fms_mod,       only: error_mesg, FATAL, NOTE, file_exist,   &
+use fms_mod,       only: error_mesg, FATAL, NOTE,   &
                          check_nml_error, open_namelist_file,      &
                          mpp_pe, mpp_root_pe, close_file, stdlog, &
                          write_version_number, lowercase
@@ -44,44 +50,52 @@ use monin_obukhov_functions_mod, only: most_functions_T, &
                          make_brutsaert_functions, make_neutral_functions
 use rsl_functions_mod, only: rsl_functions_T, &
                          make_ridder2010_rsl_functions, make_ghannam2022_rsl_functions
-use monin_obukhov_kernel, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
+use monin_obukhov_inter, only: monin_obukhov_diff, monin_obukhov_drag_1d, &
                          monin_obukhov_solve_zeta, monin_obukhov_profile_1d
 
 implicit none
 private
 
 !=======================================================================
- public monin_obukhov_init
- public monin_obukhov_end
- public mo_drag
- public mo_profile
- public mo_diff
- public stable_mix
+ public :: monin_obukhov_init
+ public :: monin_obukhov_end
+ public :: mo_drag
+ public :: mo_profile
+ public :: mo_diff
+ public :: stable_mix
 !=======================================================================
 
+!> @brief Compute surface drag coefficients
+!> @ingroup monin_obukhov_mod
 interface mo_drag
     module procedure  mo_drag_0d, mo_drag_1d, mo_drag_2d
 end interface
 
 
+!> @ingroup monin_obukhov_mod
 interface mo_profile
     module procedure  mo_profile_0d,   mo_profile_1d,   mo_profile_2d, &
                       mo_profile_0d_n, mo_profile_1d_n, mo_profile_2d_n
 end interface
 
+!> @ingroup monin_obukhov_mod
 interface mo_diff
     module procedure  mo_diff_0d_n, mo_diff_0d_1, &
                       mo_diff_1d_n, mo_diff_1d_1, &
                       mo_diff_2d_n, mo_diff_2d_1
 end interface
 
+!> @ingroup monin_obukhov_mod
 interface stable_mix
     module procedure  stable_mix_0d, stable_mix_1d, &
                       stable_mix_2d, stable_mix_3d
 end interface
 
+!> @addtogroup monin_obukhov_mod
+!> @{
 
-!--------------------- version number ---------------------------------
+!-----------------------------------------------------------------------
+! version number of this module
 ! Include variable "version" to be written to log file.
 #include <file_version.h>
 
@@ -130,30 +144,19 @@ contains
 
 subroutine monin_obukhov_init
 
-integer :: unit, ierr, io, logunit
+integer :: ierr, io, logunit
 class(rsl_functions_T),  pointer :: rsl => NULL()  ! pointer to roughness sublayer (RSL)
                    ! correction functions
 
 !------------------- read namelist input -------------------------------
 
-#ifdef INTERNAL_FILE_NML
       read (input_nml_file, nml=monin_obukhov_nml, iostat=io)
       ierr = check_nml_error(io,"monin_obukhov_nml")
-#else
-      if (file_exist('input.nml')) then
-         unit = open_namelist_file ()
-         ierr=1; do while (ierr /= 0)
-            read  (unit, nml=monin_obukhov_nml, iostat=io, end=10)
-            ierr = check_nml_error(io,'monin_obukhov_nml')
-         enddo
-  10     call close_file (unit)
-      endif
-#endif
 
 !---------- output namelist to log-------------------------------------
 
       if ( mpp_pe() == mpp_root_pe() ) then
-           call write_version_number('monin_obukhov_nml', version)
+           call write_version_number('MONIN_OBUKOV_MOD', version)
            logunit = stdlog()
            write (logunit, nml=monin_obukhov_nml)
       endif
@@ -250,7 +253,7 @@ subroutine mo_drag_1d &
   call monin_obukhov_drag_1d(most, grav, vonkarm,                  &
        & error, zeta_min, max_iter, small,                         &
        & drag_min_heat, drag_min_moist, drag_min_mom,              &
-       & n, pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t,         &
+       & n, pt, pt0, z, z0, zt, zq, zR, speed, drag_m, drag_t,     &
        & drag_q, u_star, b_star, rich, zeta, ier, avail)
 
 end subroutine mo_drag_1d
@@ -545,19 +548,21 @@ real, intent(out) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
-
-real, dimension(1,1,1) :: z_, k_m_, k_h_
-real, dimension(1,1)   :: u_star_, b_star_
+real, dimension(1,1,1) :: z_a, k_m_a, k_h_a
+real, dimension(1,1)   :: u_star_a, b_star_a
 
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_1 in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = 1
-z_(1,1,1) = z; u_star_ = u_star; b_star_ = b_star
+z_a(1,1,1) = z
+u_star_a(1,1) = u_star
+b_star_a(1,1) = b_star
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
-k_m = k_m_(1,1,1); k_h = k_h_(1,1,1)
+          & ni, nj, nk, z_a, u_star_a, b_star_a, k_m_a, k_h_a, ier)
+k_m = k_m_a(1,1,1)
+k_h = k_h_a(1,1,1)
 
 end subroutine mo_diff_0d_1
 
@@ -570,18 +575,21 @@ real, intent(out), dimension(:) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
-real, dimension(1,1,size(z)) :: z_, k_m_, k_h_
-real, dimension(1,1)         :: u_star_, b_star_
+real, dimension(1,1,size(z)) :: z_a, k_m_a, k_h_a
+real, dimension(1,1) :: u_star_a, b_star_a
 
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_n in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = size(z(:))
-z_(1,1,:) = z; u_star_ = u_star; b_star_ = b_star
+z_a(1,1,:) = z(:)
+u_star_a(1,1) = u_star
+b_star_a(1,1) = b_star
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
-k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
+          & ni, nj, nk, z_a, u_star_a, b_star_a, k_m_a, k_h_a, ier)
+k_m(:) = k_m_a(1,1,:)
+k_h(:) = k_h_a(1,1,:)
 
 end subroutine mo_diff_0d_n
 
@@ -632,4 +640,5 @@ mix = mix_3d(1,1,1)
 end subroutine stable_mix_0d
 
 end module monin_obukhov_mod
-
+!> @}
+! close documentation grouping

@@ -16,14 +16,22 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+
+!> addtogroup mpp_mod
+!> @{
+
+!> @brief Scatter data from one pe to the specified pes.
+!!
+!> Scatter (ie - is) * (je - js) contiguous elements of array data from the designated root pe
+!! into contigous members of array segment in each pe that is included in the pelist argument.
 subroutine MPP_SCATTER_PELIST_2D_(is, ie, js, je, pelist, array_seg, data, is_root_pe, &
                                   ishift, jshift)
-   integer,                           intent(in)    :: is, ie, js, je
-   integer,   dimension(:),           intent(in)    :: pelist
-   MPP_TYPE_, dimension(is:ie,js:je), intent(inout)    :: array_seg
-   MPP_TYPE_, dimension(:,:),         intent(in) :: data
-   logical,                           intent(in)    :: is_root_pe
-   integer,   optional,               intent(in)    :: ishift, jshift
+   integer,                           intent(in)    :: is, ie, js, je !< indices of segment array
+   integer,   dimension(:),           intent(in)    :: pelist!<PE list of target pes, must be in monotonic increasing order
+   MPP_TYPE_, dimension(is:ie,js:je), intent(inout)    :: array_seg !< 2D array of output data
+   MPP_TYPE_, dimension(:,:),         intent(in) :: data !< 2D array of input data
+   logical,                           intent(in)    :: is_root_pe !< true if calling from root
+   integer,   optional,               intent(in)    :: ishift, jshift !< Offsets of array elements
 
    MPP_TYPE_ ::  arr3D(size(array_seg,1),size(array_seg,2),1)
    MPP_TYPE_ :: data3D(size(     data,1),size(     data,2),1)
@@ -104,7 +112,7 @@ subroutine MPP_SCATTER_PELIST_3D_(is, ie, js, je, nk, pelist, array_seg, data, i
      gind(4,:)=gind(4,:)+joff
 ! check indices to make sure they are within the range of "data"
      if ((minval(gind).lt.1) .OR. (maxval(gind(1:2,:)).gt.size(data,1)) .OR. (maxval(gind(3:4,:)).gt.size(data,2))) &
-         call mpp_error(FATAL,"fms_io(mpp_scatter_pelist): specified indices (with shift) are outside of the & 
+         call mpp_error(FATAL,"fms_io(mpp_scatter_pelist): specified indices (with shift) are outside of the &
                         &range of the receiving array")
    else
 ! non root_pe's send indices to root_pe
@@ -147,3 +155,4 @@ subroutine MPP_SCATTER_PELIST_3D_(is, ie, js, je, nk, pelist, array_seg, data, i
    return
 
 end subroutine MPP_SCATTER_PELIST_3D_
+!> @}

@@ -3,7 +3,7 @@
 
 module integrate_mod
 
-#define _PURE
+#define _PURE pure
 
 use, intrinsic :: ieee_arithmetic
 
@@ -335,7 +335,7 @@ end subroutine integrate_simpson
 
 ! ---------------------------------------------------------------------------------------
 !> Calculate integral of a given function using Romberg procedure with trapezoidal integration rule
-subroutine integrate_romberg_trapezoid(f,a,b, rtol, ss, ierr, maxD, nDeg, nSteps)
+_PURE subroutine integrate_romberg_trapezoid(f,a,b, rtol, ss, ierr, maxD, nDeg, nSteps)
   procedure(integrand)   :: f    !< function to integrate
   real   , intent(in)    :: a    !< lower limit of integration
   real   , intent(in)    :: b    !< upper limit of integration

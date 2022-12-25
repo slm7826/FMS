@@ -16,6 +16,8 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @addtogroup mpp_domains_mod
+!> @{
   function MPP_GLOBAL_REDUCE_2D_( domain, field, locus, position )
     MPP_TYPE_ :: MPP_GLOBAL_REDUCE_2D_
     type(domain2D), intent(in) :: domain
@@ -59,12 +61,13 @@
 !field is on compute domain
         ioff = isc
         joff = jsc
-    else if( size(field,1).EQ.domain%x(1)%memory%size+ishift .AND. size(field,2).EQ.domain%y(1)%memory%size+jshift )then
+    else if( size(field,1).EQ.domain%x(1)%memory%size+ishift .AND. size(field,2).EQ.domain%y(1)%memory%size+jshift)then
 !field is on data domain
         ioff = domain%x(1)%data%begin
         joff = domain%y(1)%data%begin
     else
-        call mpp_error( FATAL, 'MPP_GLOBAL_REDUCE_: incoming field array must match either compute domain or data domain.' )
+        call mpp_error( FATAL, &
+                       &  'MPP_GLOBAL_REDUCE_: incoming field array must match either compute domain or data domain.' )
     end if
 
 !get your local max/min
@@ -141,3 +144,4 @@
     end if
     return
   end function MPP_GLOBAL_REDUCE_5D_
+!> @}

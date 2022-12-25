@@ -23,6 +23,11 @@
 #include "interp.h"
 #include "create_xgrid.h"
 
+/** \file
+ *  \ingroup mosaic
+ *  \brief Grid interpolation functions for use in @ref mosaic_mod
+ */
+
 /*********************************************************************
    void cublic_spline_sp(size1, size2, grid1, grid2, data1, data2)
 
@@ -354,7 +359,7 @@ void conserve_interp_great_circle(int nx_src, int ny_src, int nx_dst, int ny_dst
 void linear_vertical_interp(int nx, int ny, int nk1, int nk2, const double *grid1, const double *grid2,
                             double *data1, double *data2)
 {
-  int n1, n2, i, n, k, l;
+  int n, k, l;
   double w;
 
   for(k=1; k<nk1; k++) {

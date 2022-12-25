@@ -33,6 +33,12 @@
 #define EPSLN10 (1.e-10)
 #define EPSLN15 (1.e-15)
 #define EPSLN30 (1.e-30)
+
+/** \file
+ *  \ingroup mosaic
+ *  \brief Error handling and other general utilities for @ref mosaic_mod
+ */
+
 /***********************************************************
     void error_handler(char *str)
     error handler: will print out error message and then abort
@@ -44,12 +50,10 @@ void set_reproduce_siena_true(void)
   reproduce_siena = 1;
 }
 
-#ifndef __AIX
 void set_reproduce_siena_true_(void)
 {
   reproduce_siena = 1;
 }
-#endif
 
 
 void error_handler(const char *msg)
@@ -541,31 +545,7 @@ double great_circle_area(int n, const double *x, const double *y, const double *
 double spherical_angle(const double *v1, const double *v2, const double *v3)
 {
   double angle;
-#ifdef NO_QUAD_PRECISION
-  double px, py, pz, qx, qy, qz, ddd;
-#ifndef SQRT_
-#define SQRT_ sqrt
-#else
-#error "SQRT_ Previously Defined"
-#endif  /* SQRT_ */
-#ifndef ABS_
-#define ABS_ fabsl
-#else
-#error "ABS_ Previously Defined"
-#endif  /* ABS_ */
-#else
   long double px, py, pz, qx, qy, qz, ddd;
-#ifndef SQRT_
-#define SQRT_ sqrtl
-#else
-#error "SQRT_ Previously Defined"
-#endif  /* SQRT_ */
-#ifndef ABS_
-#define ABS_ fabs
-#else
-#error "ABS_ Previously Defined"
-#endif  /* ABS_ */
-#endif
 
   /* vector product between v1 and v2 */
   px = v1[1]*v2[2] - v1[2]*v2[1];
@@ -580,9 +560,9 @@ double spherical_angle(const double *v1, const double *v2, const double *v3)
   if ( ddd <= 0.0 )
     angle = 0. ;
   else {
-    ddd = (px*qx+py*qy+pz*qz) / SQRT_(ddd);
-    if( ABS_(ddd-1) < EPSLN30 ) ddd = 1;
-    if( ABS_(ddd+1) < EPSLN30 ) ddd = -1;
+    ddd = (px*qx+py*qy+pz*qz) / sqrtl(ddd);
+    if( fabsl(ddd-1) < EPSLN30 ) ddd = 1;
+    if( fabsl(ddd+1) < EPSLN30 ) ddd = -1;
     if ( ddd>1. || ddd<-1. ) {
       /*FIX (lmh) to correctly handle co-linear points (angle near pi or 0) */
       if (ddd < 0.)
@@ -1398,7 +1378,6 @@ int inside_a_polygon(double *lon1, double *lat1, int *npts, double *lon2, double
 
 }
 
-#ifndef __AIX
 int inside_a_polygon_(double *lon1, double *lat1, int *npts, double *lon2, double *lat2)
 {
 
@@ -1409,4 +1388,3 @@ int inside_a_polygon_(double *lon1, double *lat1, int *npts, double *lon2, doubl
   return isinside;
 
 }
-#endif

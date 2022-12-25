@@ -16,10 +16,13 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup drifters_input_mod drifters_input_mod
+!> @ingroup drifters
+!> @brief Imports initial drifter positions from a netCDF file
 
-
+!> @addtogroup drifters_input_mod
+!> @{
 module drifters_input_mod
-#include <fms_platform.h>
   implicit none
   private
 
@@ -30,41 +33,53 @@ module drifters_input_mod
   ! Include variable "version" to be written to log file.
 #include<file_version.h>
   character, parameter, private :: SEPARATOR = ' '
+  !> @}
 
+  !> @brief Input data type for drifters.
+  !!
+  !> @note Be sure to update drifters_input_new, drifters_input_del and drifters_input_copy_new
+  !! when adding members
+  !> @ingroup drifters_input_mod
   type drifters_input_type
      ! Be sure to update drifters_input_new, drifters_input_del and drifters_input_copy_new
      ! when adding members
-     character(len=MAX_STR_LEN), _ALLOCATABLE :: position_names(:) _NULL
-     character(len=MAX_STR_LEN), _ALLOCATABLE :: position_units(:) _NULL
-     character(len=MAX_STR_LEN), _ALLOCATABLE :: field_names(:)    _NULL
-     character(len=MAX_STR_LEN), _ALLOCATABLE :: field_units(:)    _NULL
-     character(len=MAX_STR_LEN), _ALLOCATABLE :: velocity_names(:) _NULL
-     real                      , _ALLOCATABLE :: positions(:,:) _NULL
-     integer                   , _ALLOCATABLE :: ids(:)         _NULL
+     character(len=MAX_STR_LEN), allocatable :: position_names(:)
+     character(len=MAX_STR_LEN), allocatable :: position_units(:)
+     character(len=MAX_STR_LEN), allocatable :: field_names(:)
+     character(len=MAX_STR_LEN), allocatable :: field_units(:)
+     character(len=MAX_STR_LEN), allocatable :: velocity_names(:)
+     real                      , allocatable :: positions(:,:)
+     integer                   , allocatable :: ids(:)
      character(len=MAX_STR_LEN)               :: time_units
      character(len=MAX_STR_LEN)               :: title
      character(len=MAX_STR_LEN)               :: version
   end type drifters_input_type
 
+  !> @brief Assignment override for @ref drifters_input_type
+  !> @ingroup drifters_input_mod
   interface assignment(=)
      module procedure drifters_input_copy_new
   end interface
- 
+
+!> @addtogroup drifters_input_mod
+!> @{
 
   contains
 
 !===============================================================================
 
   subroutine drifters_input_new(self, filename, ermesg)
+    use netcdf
+    use netcdf_nf_data
+    use netcdf_nf_interfaces
     type(drifters_input_type)    :: self
     character(len=*), intent(in) :: filename
     character(len=*), intent(out):: ermesg
 
-    ! Local 
+    ! Local
     integer :: ier, ncid, nd, nf, np, ipos, j, id, i, isz
     character(len=MAX_STR_LEN) :: attribute
-    include 'netcdf.inc'
-    
+
     ermesg = ''
 
     ier = nf_open(filename, NF_NOWRITE, ncid)
@@ -96,7 +111,7 @@ module drifters_input_mod
           nf = nf + 1
        endif
     enddo
-      
+
     ier = NF_INQ_DIMID(NCID, 'np', id)
     if(ier/=NF_NOERR) then
        ermesg = 'drifters_input: ERROR could not find "np" (number of particles)'
@@ -127,12 +142,12 @@ module drifters_input_mod
        ier = nf_close(ncid)
        return
     endif
-    ier = NF_GET_VAR_DOUBLE(NCID, id, self%positions)
+    ier = NF90_GET_VAR(NCID, id, self%positions)
 
     attribute = ''
     ier = nf_get_att_text(ncid, NF_GLOBAL, 'version', attribute)
     self%version = trim(attribute)
-   
+
     attribute = ''
     ier = nf_get_att_text(ncid, NF_GLOBAL, 'time_units', attribute)
     self%time_units = trim(attribute)
@@ -234,7 +249,7 @@ module drifters_input_mod
     deallocate(self%velocity_names, stat=iflag)
     deallocate(self%ids, stat=iflag)
     deallocate(self%positions, stat=iflag)
-    
+
   end subroutine drifters_input_del
 
 !===============================================================================
@@ -249,7 +264,7 @@ module drifters_input_mod
     allocate(new_instance%field_units( size(old_instance%field_units) ))
     allocate(new_instance%velocity_names( size(old_instance%velocity_names) ))
     new_instance%position_names = old_instance%position_names
-    new_instance%position_units = old_instance%position_units 
+    new_instance%position_units = old_instance%position_units
     new_instance%field_names    = old_instance%field_names
     new_instance%field_units    = old_instance%field_units
     new_instance%velocity_names = old_instance%velocity_names
@@ -264,23 +279,27 @@ module drifters_input_mod
   end subroutine drifters_input_copy_new
 
 !===============================================================================
+  !> @brief save state in netcdf file. can be used as restart file.
   subroutine drifters_input_save(self, filename, geolon, geolat, ermesg)
     ! save state in netcdf file. can be used as restart file.
+    use netcdf
+    use netcdf_nf_data
+    use netcdf_nf_interfaces
     type(drifters_input_type)    :: self
     character(len=*), intent(in ):: filename
     real, intent(in), optional   :: geolon(:), geolat(:)
     character(len=*), intent(out):: ermesg
 
+
     integer ncid, nc_nd, nc_np, ier, nd, np, nf, nc_pos, nc_ids, i, j, n
     integer nc_lon, nc_lat
     character(len=MAX_STR_LEN) :: att
 
-    include 'netcdf.inc'
 
     ermesg = ''
-    
+
     ier = nf_create(filename, NF_CLOBBER, ncid)
-    if(ier/=NF_NOERR) then 
+    if(ier/=NF_NOERR) then
        ermesg = 'drifters_input: ERROR cannot create '//filename
        return
     endif
@@ -300,7 +319,7 @@ module drifters_input_mod
     ier = nf_put_att_text(ncid, NF_GLOBAL, 'title', len_trim(self%title), self%title)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR setting global att "title" ' &
          & //nf_strerror(ier)
-    
+
     ier = nf_put_att_text(ncid, NF_GLOBAL, 'time_units', len_trim(self%time_units), self%time_units)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR setting global att "time_units" ' &
          & //nf_strerror(ier)
@@ -367,9 +386,9 @@ module drifters_input_mod
        if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR setting att "units" to "latitude" ' &
          & //nf_strerror(ier)
     endif
-    
+
     ! variable attributes
-    
+
     att = ''
     j = 1
     do i = 1, nd
@@ -381,7 +400,7 @@ module drifters_input_mod
          & att)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR setting att "units" to "positions" ' &
          & //nf_strerror(ier)
-    
+
     att = ''
     j = 1
     do i = 1, nd
@@ -400,66 +419,32 @@ module drifters_input_mod
          & //nf_strerror(ier)
 
     ! data
-    ier = nf_put_var_double(ncid, nc_pos, self%positions)    
+    ier = nf90_put_var(ncid, nc_pos, self%positions)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR could not write "positions" ' &
          & //nf_strerror(ier)
-    
-    ier = nf_put_var_int(ncid, nc_ids, self%ids)    
+
+    ier = nf90_put_var(ncid, nc_ids, self%ids)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR could not write "ids" ' &
          & //nf_strerror(ier)
 
     if(present(geolon)) then
-       ier = nf_put_var_double(ncid, nc_lon, geolon)    
+       ier = nf90_put_var(ncid, nc_lon, geolon)
        if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR could not write "geolon" ' &
-            & //nf_strerror(ier)       
+            & //nf_strerror(ier)
     endif
     if(present(geolat)) then
-       ier = nf_put_var_double(ncid, nc_lat, geolat)    
+       ier = nf90_put_var(ncid, nc_lat, geolat)
        if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR could not write "geolat" ' &
-            & //nf_strerror(ier)       
+            & //nf_strerror(ier)
     endif
-    
-    
+
+
     ier = nf_close(ncid)
     if(ier/=NF_NOERR) ermesg = 'drifters_input_save: ERROR could not close file ' &
          & //nf_strerror(ier)
-    
+
   end subroutine drifters_input_save
 
 end module drifters_input_mod
-
-!===============================================================================
-!===============================================================================
-#ifdef _TEST_DRIFTERS_INPUT
-program test
-  use drifters_input_mod
-  implicit none
-  character(len=128) :: ermesg
-  integer :: i
-  
-  type(drifters_input_type) :: obj
-  
-  call drifters_input_new(obj, 'input.nc', ermesg)
-  if(ermesg/='') print *,'ERROR: ', ermesg
-
-  print *,'field_names:'
-  do i = 1, size(obj%field_names)
-     print *,trim(obj%field_names(i))
-  enddo
-
-  print *,'velocity_names:'
-  do i = 1, size(obj%velocity_names)
-     print *,trim(obj%velocity_names(i))
-  enddo
-
-  print *,'ids = ', obj%ids
-
-  print *,'positions: '
-  do i = 1, size(obj%positions, 2)
-     print *,obj%positions(:,i)
-  enddo
-
-  call drifters_input_del(obj, ermesg)
-end program test
-
-#endif
+!> @}
+! close documentation grouping

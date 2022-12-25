@@ -16,31 +16,26 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
-    subroutine READ_RECORD_CORE_(unit, field, nwords, data, start, axsiz)
+    subroutine READ_RECORD_CORE_(unit, field, num_words, data, start, axsiz)
       integer,         intent(in)    :: unit
       type(fieldtype), intent(in)    :: field
-      integer,         intent(in)    :: nwords
-      MPP_TYPE_,        intent(inout) :: data(nwords)
+      integer,         intent(in)    :: num_words
+      MPP_TYPE_,        intent(inout) :: data(num_words)
       integer,         intent(in)    :: start(:), axsiz(:)
 
-      integer(SHORT_KIND) :: i2vals(nwords)
+      integer(i2_kind) :: i2vals(num_words)
 !rab used in conjunction with transfer intrinsic to determine size of a variable
       integer(KIND=1) :: one_byte(8)
       integer         :: word_sz
-!#ifdef __sgi
-      integer(INT_KIND) :: ivals(nwords)
-      real(FLOAT_KIND) :: rvals(nwords)
-!#else
-!      integer :: ivals(nwords)
-!      real :: rvals(nwords)
-!#endif
+      integer(i4_kind) :: ivals(num_words)
+      real(r4_kind) :: rvals(num_words)
 
-      real(DOUBLE_KIND) :: r8vals(nwords)
+      real(r8_kind) :: r8vals(num_words)
       pointer( ptr1, i2vals )
       pointer( ptr2, ivals )
       pointer( ptr3, rvals )
       pointer( ptr4, r8vals )
-      if (mpp_io_stack_size < nwords) call mpp_io_set_stack_size(nwords)
+      if (mpp_io_stack_size < num_words) call mpp_io_set_stack_size(num_words)
 
 #ifdef use_netCDF
       word_sz = size(transfer(data(1),one_byte))
@@ -72,13 +67,13 @@
              case(NF_FLOAT)
                 ptr3 = LOC(mpp_io_stack(1))
                 if (size(transfer(rvals(1),one_byte)) .eq. word_sz) then
-                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, data  )
+                  error = NF90_GET_VAR  ( mpp_file(unit)%ncid, field%id, data, start=start, count=axsiz )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale /= 1.0 .or. field%add /= 0.0) then
                      data(:)=data(:)*field%scale + field%add
                   end if
                 else
-                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, rvals  )
+                  error = NF_GET_VARA_REAL  ( mpp_file(unit)%ncid, field%id, start, axsiz, rvals )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale == 1.0 .and. field%add == 0.0) then
                      data(:)=rvals(:)
@@ -89,7 +84,7 @@
              case(NF_DOUBLE)
                 ptr4 = LOC(mpp_io_stack(1))
                 if (size(transfer(r8vals(1),one_byte)) .eq. word_sz) then
-                  error = NF_GET_VARA_DOUBLE( mpp_file(unit)%ncid, field%id, start, axsiz, data )
+                  error = NF90_GET_VAR( mpp_file(unit)%ncid, field%id, data, start=start, count=axsiz )
                   call netcdf_err( error, mpp_file(unit), field=field )
                   if(field%scale /= 1.0 .or. field%add /= 0.0) then
                      data(:)=data(:)*field%scale + field%add
@@ -113,7 +108,7 @@
     end subroutine READ_RECORD_CORE_
 
 
-    subroutine READ_RECORD_( unit, field, nwords, data, time_level, domain, position, tile_count, start_in, axsiz_in )
+    subroutine READ_RECORD_( unit, field, num_words, data, time_level, domain, position, tile_count, start_in, axsiz_in )
 !routine that is finally called by all mpp_read routines to perform the read
 !a non-netCDF record contains:
 !      field ID
@@ -130,9 +125,9 @@
 !   with a timestamp of NULLTIME. There is no check in the code to prevent
 !   the user from repeatedly writing a static field.
 
-      integer,         intent(in)             :: unit, nwords
+      integer,         intent(in)             :: unit, num_words
       type(fieldtype), intent(in)             :: field
-      MPP_TYPE_,      intent(inout)           :: data(nwords)
+      MPP_TYPE_,      intent(inout)           :: data(num_words)
       integer,        intent(in),    optional :: time_level
       type(domain2D), intent(in),    optional :: domain
       integer,        intent(in),    optional :: position, tile_count
@@ -228,9 +223,10 @@
               end if
           end if
       endif
-      if( verbose )print '(a,2i6,i6,12i4)', 'READ_RECORD: PE, unit, nwords, start, axsiz=', pe, unit, nwords, start, axsiz
+      if( verbose )print '(a,2i6,i6,12i4)', 'READ_RECORD: PE, unit, num_words, start, axsiz=', &
+                          & pe, unit, num_words, start, axsiz
 
-      call READ_RECORD_CORE_(unit, field, nwords, data, start, axsiz)
+      call READ_RECORD_CORE_(unit, field, num_words, data, start, axsiz)
 
       return
     end subroutine READ_RECORD_
@@ -265,7 +261,7 @@
       integer :: ioff, joff, position
 
       call mpp_clock_begin(mpp_read_clock)
-      
+
       if (.NOT. present(tindex) .AND. mpp_file(unit)%time_level .ne. -1) &
       call mpp_error(FATAL, 'MPP_READ: need to specify a time level for data with time axis')
 
@@ -331,10 +327,10 @@
               leny=size(data,2)
               lenz=size(data,3)
               len=lenx*leny*lenz
-              allocate(gdata(len))          
+              allocate(gdata(len))
 ! read field on pe 0 and pass to all pes
               if( pe.EQ.0 ) call READ_RECORD_( unit, field, len, gdata, tindex )
-! broadcasting global array, this can be expensive!          
+! broadcasting global array, this can be expensive!
               call mpp_transmit( put_data=gdata(1), plen=len, to_pe=ALL_PES, &
                                  get_data=gdata(1), glen=len, from_pe=0 )
               ioff = is; joff = js
@@ -383,4 +379,3 @@
       call mpp_read( unit, field, domain, data3D, tindex, tile_count)
       return
     end subroutine MPP_READ_2DDECOMP_4D_
-

@@ -16,44 +16,39 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @defgroup topography_mod topography_mod
+!> @ingroup topography
+!> @brief Routines for creating land surface topography fields and land-water masks
+!! for latitude-longitude grids.
+!> @author Bruce Wyman
+!!
+!! This module generates realistic mountains and land-water masks
+!! on a specified latitude-longitude grid by interpolating from the
+!! 1/6 degree Navy mean topography and percent water data sets.
+!! The fields that can be generated are mean and standard deviation
+!! of topography within the specified grid boxes; and land-ocean (or
+!! water) mask and land-ocean (or water) fractional area.
+!!
+!! The interpolation scheme conserves the area-weighted average
+!! of the input data by using module horiz_interp.
+!!
+!! The interfaces get_gaussian_topog and gaussian_topog_init are documented
+!! in @ref gaussian_topog_mod
 
 module topography_mod
-
-! <CONTACT EMAIL="Bruce.Wyman@noaa.gov">
-!   Bruce Wyman
-! </CONTACT>
-
-! <HISTORY SRC="http://www.gfdl.noaa.gov/fms-cgi-bin/cvsweb.cgi/FMS/"/>
-
-! <OVERVIEW>
-!   Routines for creating land surface topography fields and land-water masks
-!   for latitude-longitude grids.
-! </OVERVIEW>
-
-! <DESCRIPTION>
-!   This module generates realistic mountains and land-water masks
-!   on a specified latitude-longitude grid by interpolating from the
-!   1/6 degree Navy mean topography and percent water data sets.
-!   The fields that can be generated are mean and standard deviation
-!   of topography within the specified grid boxes; and land-ocean (or
-!   water) mask and land-ocean (or water) fractional area.
-!
-!   The interpolation scheme conserves the area-weighted average
-!   of the input data by using module horiz_interp.
-!
-!   The interfaces get_gaussian_topog and gaussian_topog_init are documented in <LINK SRC="gaussian_topog.html">gaussian_topog_mod</LINK>.
-! </DESCRIPTION>
 
 use gaussian_topog_mod, only: gaussian_topog_init, get_gaussian_topog
 use   horiz_interp_mod, only: horiz_interp_type, horiz_interp_new, &
                               horiz_interp, horiz_interp_del
 
-use            fms_mod, only: file_exist, check_nml_error,               &
-                              open_namelist_file, close_file, stdlog,    &
+use            fms_mod, only: check_nml_error, stdlog,    &
                               mpp_pe, mpp_root_pe, write_version_number, &
-                              open_ieee32_file, error_mesg, FATAL, NOTE, &
+                              error_mesg, FATAL, NOTE, &
                               mpp_error
-use         fms_io_mod, only: read_data
+!  required for fms2_io
+use        fms2_io_mod, only: read_data, FmsNetcdfFile_t, file_exists, open_file
+!-----------------------------------------------------------------------
+
 use      constants_mod, only: PI
 use            mpp_mod, only: input_nml_file
 
@@ -66,38 +61,141 @@ public :: topography_init,                 &
           get_water_frac, get_water_mask,  &
           gaussian_topog_init, get_gaussian_topog
 
+!> @brief Returns a "realistic" mean surface height field.
+!!
+!> Returns realistic mountains on a latitude-longtude grid.
+!! The returned field is the mean topography for the given grid boxes.
+!! Computed using a conserving area-weighted interpolation.
+!! The current input data set is the 1/6 degree Navy mean topography.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param zmean The mean surface height (meters). The size of this
+!!                        field must be size(blon)-1 by size(blat)-1.
+!! @return A logical value of TRUE is returned if the surface height field
+!! was successfully created. A value of FALSE may be returned if the
+!! input topography data set was not readable.
+!!
+!! <br>Example usage:
+!! @code{.F90} flag = get_topog_mean ( blon, blat, zmean )@endcode
+!> @ingroup topography_mod
 interface get_topog_mean
   module procedure get_topog_mean_1d, get_topog_mean_2d
 end interface
+
+!> Returns a standard deviation of higher resolution topography with
+!! the given model grid boxes.
+!!
+!> Returns the standard deviation of the "finer" input topography data set,
+!! currently the Navy 1/6 degree mean topography data, within the
+!! boundaries of the given input grid.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param [out] stdev The standard deviation of surface height (in meters) within
+!! given input model grid boxes.
+!! The size of this field must be size(blon)-1 by size(blat)-1.
+!!
+!! @return A logical value of TRUE is returned if the output field was
+!! successfully created. A value of FALSE may be returned if the
+!! input topography data set was not readable.
+!!
+!! Example usage:
+!! @code{.F90} flag = get_topog_stdev( blon, blat, stdev ) @code
+!> @ingroup topography_mod
 interface get_topog_stdev
   module procedure get_topog_stdev_1d, get_topog_stdev_2d
 end interface
+
+!> @brief Returns fractional area covered by ocean in a grid box.
+!! Returns fractional area covered by ocean in the given model grid boxes.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param ocean_frac The fractional amount (0 to 1) of ocean in a grid box.
+!! The size of this field must be size(blon)-1 by size(blat)-1.
+!!
+!! @return A logical value of TRUE is returned if the output field
+!! was successfully created. A value of FALSE may be returned
+!! if the Navy 1/6 degree percent water data set was not readable.
+!!
+!! Example usage:
+!! @code{.F90} flag = get_ocean_frac ( blon, blat, ocean_frac ) @endcode
+!> @ingroup topography_mod
 interface get_ocean_frac
   module procedure get_ocean_frac_1d, get_ocean_frac_2d
 end interface
+
+!> @brief Returns a land-ocean mask in a grid box.
+!!
+!> Returns a land-ocean mask in the given model grid boxes.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param ocean_frac The fractional amount (0 to 1) of ocean in a grid box.
+!!  The size of this field must be size(blon)-1 by size(blat)-1.
+!!
+!! @return A logical value of TRUE is returned if the output field
+!! was successfully created. A value of FALSE may be returned
+!! if the Navy 1/6 degree percent water data set was not readable.
+!!
+!! Example code:
+!! @code{.F90} flag = get_ocean_mask( blon, blat, ocean_mask ) @endcode
+!> @ingroup topography_mod
 interface get_ocean_mask
   module procedure get_ocean_mask_1d, get_ocean_mask_2d
 end interface
+
+!> @brief Returns fractional area covered by water.
+!!
+!> Returns the percent of water in a grid box.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param [out] water_frac The fractional amount (0 to 1) of water in a grid box.
+!!     The size of this field must be size(blon)-1 by size(blat)-1.
+!!
+!! @return A logical value of TRUE is returned if the output field
+!! was successfully created. A value of FALSE may be returned
+!! if the Navy 1/6 degree percent water data set was not readable.
+!!
+!! <br>Example usage:<br> @code{.F90} flag = get_water_frac ( blon, blat, water_frac ) @endcode
+!> @ingroup topography_mod
 interface get_water_frac
   module procedure get_water_frac_1d, get_water_frac_2d
 end interface
+
+!> @brief Returns a land-water mask in a grid box.
+!!
+!> Returns a land-water mask in the given model grid boxes.
+!!
+!! @param blon The longitude (in radians) at grid box boundaries.
+!! @param blat The latitude (in radians) at grid box boundaries.
+!! @param water_mask A binary mask for water (true) or land (false).
+!! The size of this field must be size(blon)-1 by size(blat)-1.
+!!
+!! @return A logical value of TRUE is returned if the output field
+!! was successfully created. A value of FALSE may be returned
+!! if the Navy 1/6 degree percent water data set was not readable.
+!!
+!! Example usage: @code{.F90}flag = get_water_mask( blon, blat, water_mask ) @endcode
+!> @ingroup topography_mod
 interface get_water_mask
   module procedure get_water_mask_1d, get_water_mask_2d
 end interface
 
-!-----------------------------------------------------------------------
-! <NAMELIST NAME="topography_nml">
-!   <DATA NAME="topog_file" TYPE="character" DEFAULT="DATA/navy_topography.data">
-!       Name of topography file.
-!   </DATA>
-!   <DATA NAME="water_file" TYPE="character" DEFAULT="DATA/navy_pctwater.data">
-!       Name of percent water file.
-!   </DATA>
+!> @addtogroup topography_mod
+!> @{
 
+   logical :: use_mpp_io=.false.!>@var deprecated namelist variable for using mpp_io in this module
    character(len=128) :: topog_file = 'DATA/navy_topography.data', &
                          water_file = 'DATA/navy_pctwater.data'
-   namelist /topography_nml/ topog_file, water_file
-! </NAMELIST>
+   namelist /topography_nml/ topog_file, water_file, use_mpp_io
+
+   integer, parameter    :: TOPOG_INDEX = 1
+   integer, parameter    :: WATER_INDEX = 2
+   logical :: file_is_opened(2) = .false.
+   type(FmsNetcdfFile_t) :: fileobj(2) !< needed for fms2_io
 
 !-----------------------------------------------------------------------
 ! --- resolution of the topography data set ---
@@ -126,7 +224,6 @@ end interface
 !                    [real :: data(nlon,nlat)]
 ! </PRE>
 ! </DATASET>
-  integer :: unit
   integer :: ipts, jpts
   integer, parameter :: COMPUTE_STDEV = 123  ! use this flag to
                                              !   compute st dev
@@ -145,56 +242,36 @@ end interface
 !#######################################################################
 
    subroutine topography_init ()
-
      if ( module_is_initialized ) return
-
      call write_version_number("TOPOGRAPHY_MOD", version)
      call read_namelist
      module_is_initialized = .TRUE.
-
+     if (use_mpp_io) then
+       call mpp_error('topography_mod', &
+         'MPP_IO is no longer supported. Please remove use_mpp_io from topography_nml', FATAL)
+     endif
    end subroutine topography_init
 
 !#######################################################################
 
-! <FUNCTION NAME="get_topog_mean">
+ !> @brief Returns a "realistic" mean surface height field.
+ !!
+ !> Returns realistic mountains on a latitude-longtude grid.
+ !! The returned field is the mean topography for the given grid boxes.
+ !! Computed using a conserving area-weighted interpolation.
+ !! The current input data set is the 1/6 degree Navy mean topography.
+ !!
+ !! @returns A logical value of true is returned if the surface height field was successfully
+ !! created. A value of false may be returned if the input topography data set was not readable.
+ !!
+ !! @throws FATAL, shape(zmean) is not equal to (/size(blon)-1,size(blat)-1/)
+ !! Check the input grid size and output field size.
+ function get_topog_mean_1d(blon, blat, zmean)
 
-!   <OVERVIEW>
-!     Returns a "realistic" mean surface height field.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns realistic mountains on a latitude-longtude grid.
-!     The returned field is the mean topography for the given grid boxes.
-!     Computed using a conserving area-weighted interpolation.
-!     The current input data set is the 1/6 degree Navy mean topography.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_topog_mean</B> ( blon, blat, zmean )
-!   </TEMPLATE>
-
-!   <IN NAME="blon" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="zmean" UNIT=" meter" TYPE="real" DIM="(:,:)">
-!     The mean surface height (meters).
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_topog_mean" TYPE="logical">
-!     A logical value of TRUE is returned if the surface height field
-!     was successfully created. A value of FALSE may be returned if the
-!     input topography data set was not readable.
-!   </OUT>
-
-!   <ERROR MSG="shape(zmean) is not equal to (/size(blon)-1,size(blat)-1/))" STATUS="FATAL">
-!     Check the input grid size and output field size.
-!   </ERROR>
-
- function get_topog_mean_1d (blon, blat, zmean)
-
-   real, intent(in),  dimension(:)   :: blon, blat
-   real, intent(out), dimension(:,:) :: zmean
+   real, intent(in),  dimension(:)   :: blon !< Longitude (radians) at grid box boundaries
+   real, intent(in),  dimension(:)   :: blat !< Latitude (radians) at grid box boundaries
+   real, intent(out), dimension(:,:) :: zmean !< Mean surface height(meters). Size must be
+                                              !! size(blon)-1 by size(blat)-1
    logical :: get_topog_mean_1d
 
 !-----------------------------------------------------------------------
@@ -204,12 +281,9 @@ end interface
         call error_mesg('get_topog_mean_1d','shape(zmean) is not&
             & equal to (/size(blon)-1,size(blat)-1/))', FATAL)
 
-   if ( open_topog_file(topog_file) ) then
-       call interp_topog_1d ( blon, blat, zmean )
-       get_topog_mean_1d = .true.
-   else
-       get_topog_mean_1d = .false.
-   endif
+   get_topog_mean_1d = open_topog_file()
+
+   if ( get_topog_mean_1d ) call interp_topog_1d ( blon, blat, zmean)
 
 !-----------------------------------------------------------------------
 
@@ -222,7 +296,6 @@ end interface
    real, intent(in),  dimension(:,:) :: blon, blat
    real, intent(out), dimension(:,:) :: zmean
    logical :: get_topog_mean_2d
-
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
@@ -231,57 +304,32 @@ end interface
         call error_mesg('get_topog_mean_2d','shape(zmean) is not&
             & equal to (/size(blon,1)-1,size(blon,2)-1/))', FATAL)
 
-   if ( open_topog_file(topog_file) ) then
-       call interp_topog_2d ( blon, blat, zmean )
-       get_topog_mean_2d = .true.
-   else
-       get_topog_mean_2d = .false.
-   endif
+   get_topog_mean_2d = open_topog_file()
 
+   if ( get_topog_mean_2d ) call interp_topog_2d ( blon, blat, zmean)
 !-----------------------------------------------------------------------
 
  end function get_topog_mean_2d
 
-! </FUNCTION>
 !#######################################################################
 
-! <FUNCTION NAME="get_topog_stdev">
-
-!   <OVERVIEW>
-!     Returns a standard deviation of higher resolution topography with
-!     the given model grid boxes.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns the standard deviation of the "finer" input topography data set,
-!     currently the Navy 1/6 degree mean topography data, within the
-!     boundaries of the given input grid.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_topog_stdev</B> ( blon, blat, stdev )
-!   </TEMPLATE>
-!   <IN NAME="blon" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="stdev" UNITS="meter" TYPE="real" DIM="(:,:)">
-!     The standard deviation of surface height (in meters) within
-!     given input model grid boxes.
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_topog_stdev" TYPE="logical">
-!     A logical value of TRUE is returned if the output field was
-!     successfully created. A value of FALSE may be returned if the
-!     input topography data set was not readable.
-!   </OUT>
-
+ !> @brief Returns a standard deviation of higher resolution topography with
+ !! the given model grid boxes.
+ !!
+ !> Returns the standard deviation of the "finer" input topography data set,
+ !! currently the Navy 1/6 degree mean topography data, within the
+ !! boundaries of the given input grid.
+ !!
+ !! @returns A logical value of true if the output field was successfully created and false
+ !! if the input topography data set was not readable.
  function get_topog_stdev_1d (blon, blat, stdev)
 
-   real, intent(in),  dimension(:)   :: blon, blat
-   real, intent(out), dimension(:,:) :: stdev
+   real, intent(in),  dimension(:)   :: blon !< Longitude (radians) at grid box boundaries
+   real, intent(in),  dimension(:)   :: blat !< Latitude (radians) at grid box boundaries
+   real, intent(out), dimension(:,:) :: stdev !< The standard deviation of surface height (in
+                                     !! meters) within given input model grid boxes. Size must be
+                                     !! size(blon)-1 by size(blat)-1
    logical :: get_topog_stdev_1d
-
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
@@ -289,12 +337,10 @@ end interface
        call error_mesg('get_topog_stdev','shape(stdev) is not&
             & equal to (/size(blon)-1,size(blat)-1/))', FATAL)
 
-   if ( open_topog_file(topog_file) ) then
-       call interp_topog_1d ( blon, blat, stdev, flag=COMPUTE_STDEV )
-       get_topog_stdev_1d = .true.
-   else
-       get_topog_stdev_1d = .false.
-   endif
+   get_topog_stdev_1d = open_topog_file()
+
+   if ( get_topog_stdev_1d ) call interp_topog_1d ( blon, blat, &
+              stdev, flag=COMPUTE_STDEV)
 
 !-----------------------------------------------------------------------
 
@@ -307,7 +353,6 @@ end interface
    real, intent(in),  dimension(:,:) :: blon, blat
    real, intent(out), dimension(:,:) :: stdev
    logical :: get_topog_stdev_2d
-
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
@@ -316,54 +361,26 @@ end interface
         call error_mesg('get_topog_stdev_2d','shape(stdev) is not&
             & equal to (/size(blon,1)-1,size(blon,2)-1/))', FATAL)
 
-   if ( open_topog_file(topog_file) ) then
-       call interp_topog_2d ( blon, blat, stdev, flag=COMPUTE_STDEV )
-       get_topog_stdev_2d = .true.
-   else
-       get_topog_stdev_2d = .false.
-   endif
+   get_topog_stdev_2d = open_topog_file()
 
+   if ( get_topog_stdev_2d ) call interp_topog_2d ( blon, blat, &
+              stdev, flag=COMPUTE_STDEV)
 !-----------------------------------------------------------------------
 
  end function get_topog_stdev_2d
 
-! </FUNCTION>
 !#######################################################################
 
-! <FUNCTION NAME="get_ocean_frac">
-
-!   <OVERVIEW>
-!      Returns fractional area covered by ocean in a grid box.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns fractional area covered by ocean in the given model grid boxes.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_ocean_frac</B> ( blon, blat, ocean_frac )
-!   </TEMPLATE>
-
-!   <IN NAME="blon" UNITS="radians" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" UNITS="radians" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="ocean_frac" TYPE="real" DIM="(:,:)">
-!     The fractional amount (0 to 1) of ocean in a grid box.
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_ocean_frac" TYPE="logical">
-!     A logical value of TRUE is returned if the output field
-!     was successfully created. A value of FALSE may be returned
-!     if the Navy 1/6 degree percent water data set was not readable.
-!   </OUT>
-
+ !> @brief Returns fractional area covered by ocean in a grid box.
+ !> @returns A logical value of true if the output field was successfully created. A value of false
+ !! may be returned if the Navy 1/6 degree percent water data set was not readable.
  function get_ocean_frac_1d (blon, blat, ocean_frac)
 
- real, intent(in),  dimension(:)   :: blon, blat
- real, intent(out), dimension(:,:) :: ocean_frac
+ real, intent(in),  dimension(:)   :: blon !< Longitude (radians) at grid box boundaries
+ real, intent(in),  dimension(:)   :: blat !< Latitude (radians) at grid box boundaries
+ real, intent(out), dimension(:,:) :: ocean_frac !< The fractional amount (0-1) of ocean in a grid
+                                     !! box. The size must be size(blon)-1 by size(blat)-1
  logical :: get_ocean_frac_1d
-
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
@@ -371,12 +388,9 @@ end interface
         call error_mesg('get_ocean_frac','shape(ocean_frac) is not&
                  & equal to (/size(blon)-1,size(blat)-1/))', FATAL)
 
-   if ( open_topog_file(water_file) ) then
-       call interp_water_1d ( blon, blat, ocean_frac, do_ocean=.true. )
-       get_ocean_frac_1d = .true.
-   else
-       get_ocean_frac_1d = .false.
-   endif
+   get_ocean_frac_1d = open_water_file()
+   if( get_ocean_frac_1d )  call interp_water_1d ( blon, blat, &
+                ocean_frac, do_ocean=.true. )
 
 !-----------------------------------------------------------------------
 
@@ -389,7 +403,6 @@ end interface
  real, intent(in),  dimension(:,:) :: blon, blat
  real, intent(out), dimension(:,:) :: ocean_frac
  logical :: get_ocean_frac_2d
-
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
@@ -398,68 +411,40 @@ end interface
         call error_mesg('get_ocean_frac_2d','shape(ocean_frac) is not&
             & equal to (/size(blon,1)-1,size(blon,2)-1/))', FATAL)
 
-   if ( open_topog_file(water_file) ) then
-       call interp_water_2d ( blon, blat, ocean_frac, do_ocean=.true. )
-       get_ocean_frac_2d = .true.
-   else
-       get_ocean_frac_2d = .false.
-   endif
+   get_ocean_frac_2d = open_water_file()
+   if( get_ocean_frac_2d )  call interp_water_2d ( blon, blat, &
+                ocean_frac, do_ocean=.true. )
 
 !-----------------------------------------------------------------------
 
  end function get_ocean_frac_2d
 
-! </FUNCTION>
 !#######################################################################
-! <FUNCTION NAME="get_ocean_mask">
 
-!   <OVERVIEW>
-!     Returns a land-ocean mask in a grid box.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns a land-ocean mask in the given model grid boxes.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_ocean_mask</B> ( blon, blat, ocean_mask )
-!   </TEMPLATE>
-
-!   <IN NAME="blon" UNITS="radians" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" UNITS="radians" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="ocean_frac" TYPE="real" DIM="(:,:)">
-!     The fractional amount (0 to 1) of ocean in a grid box.
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_ocean_mask" TYPE="logical">
-!     A logical value of TRUE is returned if the output field
-!     was successfully created. A value of FALSE may be returned
-!     if the Navy 1/6 degree percent water data set was not readable.
-!   </OUT>
-
+ !> @brief Returns a land-ocean mask in a grid box.
+ !> @returns A logical value of true if the output field was successfully created. A value of false
+ !! may be returned if the Navy 1/6 degree percent water data set was not readable.
  function get_ocean_mask_1d (blon, blat, ocean_mask)
 
- real   , intent(in),  dimension(:)   :: blon, blat
- logical, intent(out), dimension(:,:) :: ocean_mask
+ real, intent(in),  dimension(:)   :: blon !< Longitude (radians) at grid box boundaries
+ real, intent(in),  dimension(:)   :: blat !< Latitude (radians) at grid box boundaries
+ logical, intent(out), dimension(:,:) :: ocean_mask !< Mask for ocean in a grid box.
+                                                 !! The size must be size(blon)-1 by size(blat)-1
  logical :: get_ocean_mask_1d
-
  real, dimension(size(ocean_mask,1),size(ocean_mask,2)) :: ocean_frac
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
- if ( get_ocean_frac(blon, blat, ocean_frac) ) then
-   where (ocean_frac > 0.50)
-     ocean_mask = .true.
-   elsewhere
-     ocean_mask = .false.
-   end where
-   get_ocean_mask_1d = .true.
- else
-   get_ocean_mask_1d = .false.
- endif
-
+   if ( get_ocean_frac_1d(blon, blat, ocean_frac) ) then
+     where (ocean_frac > 0.50)
+       ocean_mask = .true.
+     elsewhere
+       ocean_mask = .false.
+     end where
+     get_ocean_mask_1d = .true.
+   else
+     get_ocean_mask_1d = .false.
+   endif
 !-----------------------------------------------------------------------
 
  end function get_ocean_mask_1d
@@ -471,63 +456,36 @@ end interface
  real   , intent(in),  dimension(:,:) :: blon, blat
  logical, intent(out), dimension(:,:) :: ocean_mask
  logical :: get_ocean_mask_2d
-
  real, dimension(size(ocean_mask,1),size(ocean_mask,2)) :: ocean_frac
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
- if ( get_ocean_frac(blon, blat, ocean_frac) ) then
-   where (ocean_frac > 0.50)
-     ocean_mask = .true.
-   elsewhere
-     ocean_mask = .false.
-   end where
-   get_ocean_mask_2d = .true.
- else
-   get_ocean_mask_2d = .false.
- endif
+   if ( get_ocean_frac_2d(blon, blat, ocean_frac) ) then
+     where (ocean_frac > 0.50)
+       ocean_mask = .true.
+     elsewhere
+       ocean_mask = .false.
+     end where
+     get_ocean_mask_2d = .true.
+   else
+     get_ocean_mask_2d = .false.
+   endif
 
 !-----------------------------------------------------------------------
 
  end function get_ocean_mask_2d
 
-! </FUNCTION>
-!#######################################################################
-! <FUNCTION NAME="get_water_frac">
-
-!   <OVERVIEW>
-!     Returns fractional area covered by water.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns the percent of water in a grid box.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_water_frac</B> ( blon, blat, water_frac )
-!   </TEMPLATE>
-
-!   <IN NAME="blon" UNITS="radians" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" UNITS="radians" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="water_frac" TYPE="real" DIM="(:,:)">
-!     The fractional amount (0 to 1) of water in a grid box.
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_water_frac" TYPE="logical">
-!     A logical value of TRUE is returned if the output field
-!     was successfully created. A value of FALSE may be returned
-!     if the Navy 1/6 degree percent water data set was not readable.
-!   </OUT>
-!   <ERROR MSG="shape(water_frac) is not equal to (/size(blon)-1,size(blat)-1/))" STATUS="FATAL">
-!      Check the input grid size and output field size.
-!   </ERROR>
-
+ !> @brief Returns the percent of water in a grid box.
+ !> @returns A logical value of true if the output field was successfully created. A value of false
+ !! may be returned if the Navy 1/6 degree percent water data set was not readable.
+ !!
+ !! @throws FATAL, shape(water_frac) is not equal to (/size(blon)-1,size(blat)-1/)
+ !! Check the input grid size and output field size.
  function get_water_frac_1d (blon, blat, water_frac)
-
- real, intent(in),  dimension(:)   :: blon, blat
- real, intent(out), dimension(:,:) :: water_frac
+ real, intent(in),  dimension(:)   :: blon !< The longitude (in radians) at grid box boundaries.
+ real, intent(in),  dimension(:)   :: blat !< The latitude (in radians) at grid box boundaries.
+ real, intent(out), dimension(:,:) :: water_frac !< The fractional amount (0 to 1) of water in a
+                          !! grid box. The size of this field must be size(blon)-1 by size(blat)-1.
  logical :: get_water_frac_1d
 
 !-----------------------------------------------------------------------
@@ -537,12 +495,8 @@ end interface
         call error_mesg('get_water_frac_1d','shape(water_frac) is not&
                  & equal to (/size(blon)-1,size(blat)-1/))', FATAL)
 
-   if ( open_topog_file(water_file) ) then
-       call interp_water_1d ( blon, blat, water_frac )
-       get_water_frac_1d = .true.
-   else
-       get_water_frac_1d = .false.
-   endif
+   get_water_frac_1d = open_water_file()
+   if(get_water_frac_1d) call interp_water_1d ( blon, blat, water_frac )
 
 !-----------------------------------------------------------------------
 
@@ -552,8 +506,10 @@ end interface
 
  function get_water_frac_2d (blon, blat, water_frac)
 
- real, intent(in),  dimension(:,:) :: blon, blat
- real, intent(out), dimension(:,:) :: water_frac
+ real, intent(in),  dimension(:,:)   :: blon !< The longitude (in radians) at grid box boundaries.
+ real, intent(in),  dimension(:,:)   :: blat !< The latitude (in radians) at grid box boundaries.
+ real, intent(out), dimension(:,:) :: water_frac !< The fractional amount (0 to 1) of water in a
+                          !! grid box. The size of this field must be size(blon)-1 by size(blat)-1.
  logical :: get_water_frac_2d
 
 !-----------------------------------------------------------------------
@@ -564,68 +520,41 @@ end interface
         call error_mesg('get_water_frac_2d','shape(water_frac) is not&
             & equal to (/size(blon,1)-1,size(blon,2)-1/))', FATAL)
 
-   if ( open_topog_file(water_file) ) then
-       call interp_water_2d ( blon, blat, water_frac )
-       get_water_frac_2d = .true.
-   else
-       get_water_frac_2d = .false.
-   endif
+   get_water_frac_2d = open_water_file()
+   if(get_water_frac_2d) call interp_water_2d ( blon, blat, water_frac )
 
 !-----------------------------------------------------------------------
 
  end function get_water_frac_2d
 
-! </FUNCTION>
 !#######################################################################
-! <FUNCTION NAME="get_water_mask">
 
-!   <OVERVIEW>
-!     Returns a land-water mask in a grid box.
-!   </OVERVIEW>
-!   <DESCRIPTION>
-!     Returns a land-water mask in the given model grid boxes.
-!   </DESCRIPTION>
-!   <TEMPLATE>
-!     flag = <B>get_water_mask</B> ( blon, blat, water_mask )
-!   </TEMPLATE>
-
-!   <IN NAME="blon" UNITS="radians" TYPE="real" DIM="(:)">
-!     The longitude (in radians) at grid box boundaries.
-!   </IN>
-!   <IN NAME="blat" UNITS="radians" TYPE="real" DIM="(:)">
-!     The latitude (in radians) at grid box boundaries.
-!   </IN>
-!   <OUT NAME="water_mask" TYPE="real" DIM="(:,:)">
-!     A binary mask for water (true) or land (false).
-!     The size of this field must be size(blon)-1 by size(blat)-1.
-!   </OUT>
-!   <OUT NAME="get_water_mask" TYPE="logical">
-!     A logical value of TRUE is returned if the output field
-!     was successfully created. A value of FALSE may be returned
-!     if the Navy 1/6 degree percent water data set was not readable.
-!   </OUT>
-
+ !> @brief Returns a land-water mask in the given model grid boxes.
+ !> @return A logical value of TRUE is returned if the output field
+ !! was successfully created. A value of FALSE may be returned
+ !! if the Navy 1/6 degree percent water data set was not readable.
  function get_water_mask_1d (blon, blat, water_mask)
 
- real   , intent(in),  dimension(:)   :: blon, blat
- logical, intent(out), dimension(:,:) :: water_mask
+ real, intent(in),  dimension(:)   :: blon !< The longitude (in radians) at grid box boundaries.
+ real, intent(in),  dimension(:)   :: blat !< The latitude (in radians) at grid box boundaries.
+ logical, intent(out), dimension(:,:) :: water_mask !< A binary mask for water (true) or land (false).
+                                     !! The size of this field must be size(blon)-1 by size(blat)-1.
  logical :: get_water_mask_1d
 
  real, dimension(size(water_mask,1),size(water_mask,2)) :: water_frac
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
- if ( get_water_frac(blon, blat, water_frac) ) then
-   where (water_frac > 0.50)
-     water_mask = .true.
-   elsewhere
-     water_mask = .false.
-   end where
-   get_water_mask_1d = .true.
- else
-   get_water_mask_1d = .false.
- endif
-
+   if ( get_water_frac_1d(blon, blat, water_frac) ) then
+     where (water_frac > 0.50)
+       water_mask = .true.
+     elsewhere
+       water_mask = .false.
+     end where
+     get_water_mask_1d = .true.
+   else
+     get_water_mask_1d = .false.
+   endif
 !-----------------------------------------------------------------------
 
  end function get_water_mask_1d
@@ -634,67 +563,92 @@ end interface
 
  function get_water_mask_2d (blon, blat, water_mask)
 
- real   , intent(in),  dimension(:,:) :: blon, blat
- logical, intent(out), dimension(:,:) :: water_mask
+ real, intent(in),  dimension(:,:)   :: blon !< The longitude (in radians) at grid box boundaries.
+ real, intent(in),  dimension(:,:)   :: blat !< The latitude (in radians) at grid box boundaries.
+ logical, intent(out), dimension(:,:) :: water_mask !< A binary mask for water (true) or land (false).
+                                     !! The size of this field must be size(blon)-1 by size(blat)-1.
  logical :: get_water_mask_2d
-
  real, dimension(size(water_mask,1),size(water_mask,2)) :: water_frac
 !-----------------------------------------------------------------------
    if (.not. module_is_initialized) call topography_init()
 
- if ( get_water_frac(blon, blat, water_frac) ) then
-   where (water_frac > 0.50)
-     water_mask = .true.
-   elsewhere
-     water_mask = .false.
-   end where
-   get_water_mask_2d = .true.
- else
-   get_water_mask_2d = .false.
- endif
+   if ( get_water_frac_2d(blon, blat, water_frac) ) then
+     where (water_frac > 0.50)
+       water_mask = .true.
+     elsewhere
+       water_mask = .false.
+     end where
+     get_water_mask_2d = .true.
+   else
+     get_water_mask_2d = .false.
+   endif
 
 !-----------------------------------------------------------------------
 
  end function get_water_mask_2d
 
-! </FUNCTION>
-
 !#######################################################################
 !##################   private interfaces below here   ##################
 !#######################################################################
 
- function open_topog_file ( filename )
- character(len=*), intent(in) :: filename
+ function open_topog_file ( )
  logical :: open_topog_file
  real    :: r_ipts, r_jpts
  integer :: namelen
 
- namelen = len(trim(filename))
-  if ( file_exist(filename) .AND. filename(namelen-2:namelen) == '.nc') then
+  namelen = len(trim(topog_file))
+  if ( file_exists(topog_file) .AND. topog_file(namelen-2:namelen) == '.nc') then
      if (mpp_pe() == mpp_root_pe()) call mpp_error ('topography_mod', &
-            'Reading NetCDF formatted input data file: '//filename, NOTE)
-     call read_data(filename, 'ipts', r_ipts, no_domain=.true.)
-     call read_data(filename, 'jpts', r_jpts, no_domain=.true.)
+            'Reading NetCDF formatted input data file: '//trim(topog_file), NOTE)
+     if(.not. file_is_opened(TOPOG_INDEX) ) then
+        if(.not. open_file(fileobj(TOPOG_INDEX), topog_file, 'read' )) then
+           call mpp_error(FATAL, 'topography_mod: Error in opening file '//trim(topog_file))
+        endif
+     endif
+
+     call read_data(fileobj(TOPOG_INDEX), 'ipts', r_ipts)
+     call read_data(fileobj(TOPOG_INDEX), 'jpts', r_jpts)
      ipts = nint(r_ipts)
      jpts = nint(r_jpts)
      open_topog_file = .true.
+     file_is_opened(TOPOG_INDEX) = .true.
   else
-     if ( file_exist(filename) ) then
-        if (mpp_pe() == mpp_root_pe()) call mpp_error ('topography_mod', &
-             'Reading native formatted input data file: '//filename, NOTE)
-        unit = open_ieee32_file (trim(filename), 'read')
-        read (unit) ipts, jpts
-        open_topog_file = .true.
-     else
-        open_topog_file = .false.
-     endif
+     open_topog_file = .false.
   endif
 
  end function open_topog_file
 
+ function open_water_file ( )
+ logical :: open_water_file
+ real    :: r_ipts, r_jpts
+ integer :: namelen
+
+  namelen = len(trim(water_file))
+  if ( file_exists(water_file) .AND. water_file(namelen-2:namelen) == '.nc') then
+     if (mpp_pe() == mpp_root_pe()) call mpp_error ('topography_mod', &
+            'Reading NetCDF formatted input data file: '//trim(water_file), NOTE)
+     if(.not. file_is_opened(WATER_INDEX) ) then
+        if(.not. open_file(fileobj(WATER_INDEX), water_file, 'read' )) then
+           call mpp_error(FATAL, 'topography_mod: Error in opening file '//trim(water_file))
+        endif
+     endif
+
+     call read_data(fileobj(WATER_INDEX), 'ipts', r_ipts)
+     call read_data(fileobj(WATER_INDEX), 'jpts', r_jpts)
+     ipts = nint(r_ipts)
+     jpts = nint(r_jpts)
+     open_water_file = .true.
+     file_is_opened(WATER_INDEX) = .true.
+  else
+     open_water_file = .false.
+  endif
+
+ end function open_water_file
+
+
 !#######################################################################
 
- subroutine interp_topog_1d ( blon, blat, zout, flag )
+ subroutine interp_topog_1d ( blon, blat, zout, flag)
  real   , intent(in)  :: blon(:), blat(:)
  real   , intent(out) :: zout(:,:)
  integer, intent(in), optional :: flag
@@ -703,7 +657,7 @@ end interface
  real :: zdat(ipts,jpts)
  real :: zout2(size(zout,1),size(zout,2))
 
-    call input_data ( topog_file, xdat, ydat, zdat )
+    call input_data( TOPOG_INDEX, xdat, ydat, zdat)
 
     call horiz_interp ( zdat, xdat, ydat, blon, blat, zout )
 
@@ -736,7 +690,8 @@ end interface
  integer :: js, je
  type (horiz_interp_type) :: Interp
 
-    call input_data ( topog_file, xdat, ydat, zdat )
+    call input_data( TOPOG_INDEX, xdat, ydat, zdat)
+
     call find_indices ( minval(blat), maxval(blat), ydat, js, je )
 
     call horiz_interp_new ( Interp, xdat, ydat(js:je+1), blon, blat )
@@ -788,25 +743,15 @@ end interface
  end subroutine find_indices
 
 !#######################################################################
-
- subroutine input_data ( ifile, xdat, ydat, zdat )
- character(len=*), intent(in) :: ifile
+ subroutine input_data ( indx, xdat, ydat, zdat )
+ integer, intent(in) :: indx
  real, intent(out) :: xdat(ipts+1), ydat(jpts+1), zdat(ipts,jpts)
- integer :: nc
 
-   nc = len_trim(ifile)
-
-! note: ipts,jpts,unit are global
-
-  if ( file_exist(trim(ifile)) .AND. ifile(nc-2:nc) == '.nc') then
-     call read_data(trim(ifile), 'xdat', xdat, no_domain=.true.)
-     call read_data(trim(ifile), 'ydat', ydat, no_domain=.true.)
-     call read_data(trim(ifile), 'zdat', zdat, no_domain=.true.)
-  else
-    read (unit) xdat, ydat    ! read lon/lat edges in radians
-    read (unit) zdat          ! read land surface height in meters
-    call close_file (unit)
- endif
+  if( file_is_opened(indx) ) then
+     call read_data(fileobj(indx), 'xdat', xdat)
+     call read_data(fileobj(indx), 'ydat', ydat)
+     call read_data(fileobj(indx), 'zdat', zdat)
+  endif
 
  end subroutine input_data
 
@@ -816,10 +761,8 @@ end interface
  real   , intent(in)  :: blon(:), blat(:)
  real   , intent(out) :: zout(:,:)
  logical, intent(in), optional :: do_ocean
-
  real :: xdat(ipts+1), ydat(jpts+1), zdat(ipts,jpts)
-
-    call input_data ( water_file, xdat, ydat, zdat )
+    call input_data ( WATER_INDEX, xdat, ydat, zdat )
 
 ! only use designated ocean points
     if (present(do_ocean)) then
@@ -837,10 +780,9 @@ end interface
  real   , intent(in)  :: blon(:,:), blat(:,:)
  real   , intent(out) :: zout(:,:)
  logical, intent(in), optional :: do_ocean
-
  real :: xdat(ipts+1), ydat(jpts+1), zdat(ipts,jpts)
 
-    call input_data ( water_file, xdat, ydat, zdat )
+    call input_data ( WATER_INDEX, xdat, ydat, zdat )
 
 ! only use designated ocean points
     if (present(do_ocean)) then
@@ -907,28 +849,16 @@ end interface
  end subroutine determine_ocean_points
 
 !#######################################################################
-! reads the namelist file, write namelist to log file,
-! and initializes constants
-
+!> @brief Reads the namelist file, write namelist to log file,
+!! and initializes constants
 subroutine read_namelist
 
    integer :: unit, ierr, io
 
 !  read namelist
 
-#ifdef INTERNAL_FILE_NML
-      read (input_nml_file, topography_nml, iostat=io)
-      ierr = check_nml_error(io,'topography_nml')
-#else
-   if ( file_exist('input.nml')) then
-      unit = open_namelist_file ( )
-      ierr=1; do while (ierr /= 0)
-         read  (unit, nml=topography_nml, iostat=io, end=10)
-         ierr = check_nml_error(io,'topography_nml')
-      enddo
- 10   call close_file (unit)
-   endif
-#endif
+   read (input_nml_file, topography_nml, iostat=io)
+   ierr = check_nml_error(io,'topography_nml')
 
 !  write version and namelist to log file
 
@@ -939,8 +869,6 @@ subroutine read_namelist
 
 end subroutine read_namelist
 
-!#######################################################################
-
 end module topography_mod
 
 ! <INFO>
@@ -948,7 +876,7 @@ end module topography_mod
 !   <TESTPROGRAM NAME="">
 !
 !  To run this program you will need the topography and percent water
-!  data sets and use the following namelist (in file input.nml).
+!  data sets and use the following namelist (in the input nml file).
 !
 !   &amp;gaussian_topog_nml
 !     height = 5000., 3000., 3000., 3000.,
@@ -1042,3 +970,5 @@ end module topography_mod
 !   <FUTURE>Incorporate other topography and ocean data sets. </FUTURE>
 !
 ! </INFO>
+!> @}
+! close documentation grouping

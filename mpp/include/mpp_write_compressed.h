@@ -22,7 +22,7 @@
       type(domain2D), intent(inout) :: domain
       MPP_TYPE_, intent(inout) :: data(:)
       integer, intent(in) :: nelems_io(:)  ! number of compressed elements
-      real,              intent(in), optional :: tstamp
+      MPP_TYPE_,              intent(in), optional :: tstamp
       MPP_TYPE_,         intent(in), optional :: default_data
 
       MPP_TYPE_ :: data2D(size(data,1),1)
@@ -39,7 +39,7 @@
       type(domain2D), intent(inout) :: domain
       MPP_TYPE_, intent(inout) :: data(:,:,:)
       integer, intent(in) :: nelems_io(:)  ! number of compressed elements
-      real,              intent(in), optional :: tstamp
+      MPP_TYPE_,              intent(in), optional :: tstamp
       MPP_TYPE_,         intent(in), optional :: default_data
 
       MPP_TYPE_ :: data2D(size(data,1),size(data,2)*size(data,3))
@@ -58,7 +58,7 @@
       integer,           intent(in)           :: nelems_io(:)  ! number of compressed elements from each
                                                                ! member of the io_domain. It MUST have the
                                                                ! same order as the io_domain pelist.
-      real,              intent(in), optional :: tstamp
+      MPP_TYPE_,              intent(in), optional :: tstamp
       MPP_TYPE_,         intent(in), optional :: default_data
 
 !cdata is used to store the io-domain compressed data
@@ -95,7 +95,8 @@
       allocate(nz_gather(npes))
       call mpp_gather((/nz/), nz_gather, pelist)
       if ( mpp_file(unit)%write_on_this_pe.and.maxloc(nz_gather,1).ne.minloc(nz_gather,1) ) then
-         call mpp_error( FATAL, 'MPP_WRITE_COMPRESSED_2D_: size(data,2) must be consistent across all PEs in io_domain' )
+         call mpp_error( FATAL, &
+                        &  'MPP_WRITE_COMPRESSED_2D_: size(data,2) must be consistent across all PEs in io_domain' )
       end if
       deallocate(nz_gather)
 
@@ -124,7 +125,7 @@
          enddo; enddo
          ! cludge for now; need resizing accessor
          field%size(1) = nelems
-         call write_record_default( unit, field, nelems*nz, cdata, tstamp)
+         call WRITE_RECORD_( unit, field, nelems*nz, cdata, tstamp)
          deallocate(rbuff,cdata)
       endif
 

@@ -26,6 +26,12 @@
 #ifdef use_netCDF
 #include <netcdf.h>
 #endif
+
+/** \file
+ *  \ingroup mosaic
+ *  \brief Support for reading mosaic netcdf grid files.
+ */
+
 /*********************************************************************
     void netcdf_error( int status )
     status is the returning value of netcdf call. this routine will
@@ -48,7 +54,7 @@ void handle_netcdf_error(const char *msg, int status )
 void get_file_dir(const char *file, char *dir)
 {
   int len;
-  char *strptr = NULL;
+  const char *strptr = NULL;
 
   /* get the diretory */
 
@@ -253,13 +259,13 @@ void get_var_data(const char *file, const char *name, void *data)
   switch (vartype) {
     case NC_DOUBLE:case NC_FLOAT:
 #ifdef OVERLOAD_R4
-      status = nc_get_var_float(ncid, varid, data);
+      status = nc_get_var_float(ncid, varid, (float *)data);
 #else
-      status = nc_get_var_double(ncid, varid, data);
+      status = nc_get_var_double(ncid, varid, (double *)data);
 #endif
       break;
     case NC_INT:
-      status = nc_get_var_int(ncid, varid, data);
+      status = nc_get_var_int(ncid, varid, (int *)data);
       break;
     default:
       sprintf(msg, "get_var_data: field %s in file %s has an invalid type, "
@@ -313,13 +319,13 @@ void get_var_data_region(const char *file, const char *name, const size_t *start
   switch (vartype) {
     case NC_DOUBLE:case NC_FLOAT:
 #ifdef OVERLOAD_R4
-      status = nc_get_vara_float(ncid, varid, start, nread, data);
+      status = nc_get_vara_float(ncid, varid, start, nread, (float *)data);
 #else
-      status = nc_get_vara_double(ncid, varid, start, nread, data);
+      status = nc_get_vara_double(ncid, varid, start, nread, (double *)data);
 #endif
       break;
     case NC_INT:
-      status = nc_get_vara_int(ncid, varid, start, nread, data);
+      status = nc_get_vara_int(ncid, varid, start, nread, (int *)data);
       break;
     default:
       sprintf(msg, "get_var_data_region: field %s in file %s has an invalid type, "
@@ -381,12 +387,10 @@ void get_var_text_att(const char *file, const char *name, const char *attname, c
 /***********************************************************************
   return number of overlapping cells.
 ***********************************************************************/
-#ifndef __AIX
 int read_mosaic_xgrid_size_( const char *xgrid_file )
 {
   return read_mosaic_xgrid_size(xgrid_file);
 }
-#endif
 
 int read_mosaic_xgrid_size( const char *xgrid_file )
 {
@@ -410,7 +414,6 @@ float get_global_area(void)
     return garea;
   }
 
-#ifndef __AIX
 #ifdef OVERLOAD_R4
   float get_global_area_(void)
   {
@@ -424,11 +427,9 @@ float get_global_area(void)
 
       return garea;
     }
-#endif
 
 
     /****************************************************************************/
-#ifndef __AIX
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order1_(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area )
 #else
@@ -438,7 +439,6 @@ float get_global_area(void)
       read_mosaic_xgrid_order1(xgrid_file, i1, j1, i2, j2, area);
 
     }
-#endif
 
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order1(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area )
@@ -479,7 +479,6 @@ float get_global_area(void)
     } /* read_mosaic_xgrid_order1 */
 
 
-#ifndef __AIX
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order1_region_(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area, int *isc, int *iec )
 #else
@@ -489,7 +488,6 @@ float get_global_area(void)
       read_mosaic_xgrid_order1_region(xgrid_file, i1, j1, i2, j2, area, isc, iec);
 
     }
-#endif
 
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order1_region(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area, int *isc, int *iec )
@@ -542,7 +540,6 @@ float get_global_area(void)
 
     /* NOTE: di, dj is for tile1, */
     /****************************************************************************/
-#ifndef __AIX
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order2_(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area, float *di, float *dj )
 #else
@@ -552,7 +549,6 @@ float get_global_area(void)
       read_mosaic_xgrid_order2(xgrid_file, i1, j1, i2, j2, area, di, dj);
 
     }
-#endif
 #ifdef OVERLOAD_R4
     void read_mosaic_xgrid_order2(const char *xgrid_file, int *i1, int *j1, int *i2, int *j2, float *area, float *di, float *dj )
 #else
@@ -600,12 +596,10 @@ float get_global_area(void)
   int read_mosaic_ntiles(const char *mosaic_file)
   return number tiles in mosaic_file
     ******************************************************************************/
-#ifndef __AIX
     int read_mosaic_ntiles_(const char *mosaic_file)
     {
       return read_mosaic_ntiles(mosaic_file);
     }
-#endif
     int read_mosaic_ntiles(const char *mosaic_file)
     {
 
@@ -621,12 +615,10 @@ float get_global_area(void)
   int read_mosaic_ncontacts(const char *mosaic_file)
   return number of contacts in mosaic_file
     ******************************************************************************/
-#ifndef __AIX
     int read_mosaic_ncontacts_(const char *mosaic_file)
     {
       return read_mosaic_ncontacts(mosaic_file);
     }
-#endif
     int read_mosaic_ncontacts(const char *mosaic_file)
     {
 
@@ -647,12 +639,10 @@ float get_global_area(void)
   read mosaic grid size of each tile, currently we are assuming the refinement is 2.
   We assume the grid files are located at the same directory as mosaic_file.
     *****************************************************************************/
-#ifndef __AIX
     void read_mosaic_grid_sizes_(const char *mosaic_file, int *nx, int *ny)
     {
       read_mosaic_grid_sizes(mosaic_file, nx, ny);
     }
-#endif
     void read_mosaic_grid_sizes(const char *mosaic_file, int *nx, int *ny)
     {
       unsigned int ntiles, n;
@@ -680,13 +670,11 @@ float get_global_area(void)
   void read_mosaic_contact(const char *mosaic_file)
   read mosaic contact information
     ******************************************************************************/
-#ifndef __AIX
     void read_mosaic_contact_(const char *mosaic_file, int *tile1, int *tile2, int *istart1, int *iend1,
                               int *jstart1, int *jend1, int *istart2, int *iend2, int *jstart2, int *jend2)
     {
       read_mosaic_contact(mosaic_file, tile1, tile2, istart1, iend1, jstart1, jend1, istart2, iend2, jstart2, jend2);
     }
-#endif
 
     /* transfer the index from supergrid to model grid
        return 0 if istart = iend

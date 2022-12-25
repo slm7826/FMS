@@ -16,85 +16,72 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
-
-!> \file
-!! \brief Contains the \ref block_control_mod module
+!> @defgroup block_control_mod block_control_mod
+!> @ingroup block_control
+!> @brief Routines for "blocks" used for  OpenMP threading of column-based
+!!        calculations
 
 module block_control_mod
-#include <fms_platform.h>
 
 use mpp_mod,         only: mpp_error, NOTE, WARNING, FATAL
 use mpp_domains_mod, only: mpp_compute_extent
+implicit none
 
- public block_control_type
+public block_control_type
 
- type ix_type
-   integer, dimension(:,:), _ALLOCATABLE :: ix _NULL
- end type ix_type
+!> Type to dereference packed index from global index.
+!> @ingroup block_control_mod
+type :: ix_type
+  integer, dimension(:,:), allocatable :: ix
+end type ix_type
 
- type pk_type
-   integer, dimension(:), _ALLOCATABLE :: ii _NULL
-   integer, dimension(:), _ALLOCATABLE :: jj _NULL
- end type pk_type
+!> Type to dereference packed index from global indices.
+!> @ingroup block_control_mod
+type :: pk_type
+  integer, dimension(:), allocatable :: ii
+  integer, dimension(:), allocatable :: jj
+end type pk_type
 
- type block_control_type
-   integer :: nx_block, ny_block  !< blocking factor using mpp-style decomposition
-   integer :: nblks               !< number of blocks cover MPI domain
-   integer :: isc, iec, jsc, jec  !< MPI domain global extents
-   integer :: npz                 !< vertical extent
-   integer, dimension(:),        _ALLOCATABLE :: ibs   _NULL, &  !< block extents for mpp-style
-                                                 ibe   _NULL, &  !! decompositions
-                                                 jbs   _NULL, &
-                                                 jbe   _NULL
-   type(ix_type), dimension(:),  _ALLOCATABLE :: ix    _NULL !< dereference packed index from global index
-   !--- packed blocking fields
-   integer, dimension(:),        _ALLOCATABLE :: blksz _NULL !< number of points in each individual block
-                                                             !! blocks are not required to be uniforom in size
-   integer, dimension(:,:),      _ALLOCATABLE :: blkno _NULL !< dereference block number using global indices
-   integer, dimension(:,:),      _ALLOCATABLE :: ixp   _NULL !< dereference packed index from global indices
-                                                             !! must be used in conjuction with blkno
-   type(pk_type), dimension(:),  _ALLOCATABLE :: index _NULL !< dereference global indices from
-                                                             !! block/ixp combo
- end type block_control_type
+!> @brief Block data and extents for OpenMP threading of column-based calculations
+!> @ingroup block_control_mod
+type :: block_control_type
+  integer :: nx_block, ny_block  !< blocking factor using mpp-style decomposition
+  integer :: nblks               !< number of blocks cover MPI domain
+  integer :: isc, iec, jsc, jec  !< MPI domain global extents
+  integer :: npz                 !< vertical extent
+  integer, dimension(:),        allocatable :: ibs  , &  !< block extents for mpp-style
+                                               ibe  , &  !! decompositions
+                                               jbs  , &
+                                               jbe
+  type(ix_type), dimension(:),  allocatable :: ix    !< dereference packed index from global index
+  !--- packed blocking fields
+  integer, dimension(:),        allocatable :: blksz !< number of points in each individual block
+                                                            !! blocks are not required to be uniforom in size
+  integer, dimension(:,:),      allocatable :: blkno !< dereference block number using global indices
+  integer, dimension(:,:),      allocatable :: ixp   !< dereference packed index from global indices
+                                                            !! must be used in conjuction with blkno
+  type(pk_type), dimension(:),  allocatable :: index !< dereference global indices from
+                                                            !! block/ixp combo
+end type block_control_type
+
+!> @addtogroup block_control_mod
+!> @{
 
 public :: define_blocks, define_blocks_packed
 
 contains
 
 !###############################################################################
-!> \fn define_blocks
-!!
-!! \brief Sets up "blocks" used for OpenMP threading of column-based
+!> @brief Sets up "blocks" used for OpenMP threading of column-based
 !!        calculations using rad_n[x/y]xblock from coupler_nml
-!!
-!! <b> Parameters: </b>
-!!
-!! \code{.f90}
-!! character(len=*),         intent(in)    :: component
-!! type(block_control_type), intent(inout) :: Block
-!! integer,                  intent(in)    :: isc, iec, jsc, jec, kpts
-!! integer,                  intent(in)    :: nx_block, ny_block
-!! logical,                  intent(inout) :: message
-!! \endcode
-!!
-!! \param [in]    <component>
-!! \param [inout] <Block>
-!! \param [in]    <isc>
-!! \param [in]    <iec>
-!! \param [in]    <jsc>
-!! \param [in]    <jec>
-!! \param [in]    <kpts>
-!! \param [in]    <nx_block>
-!! \param [in]    <ny_block>
-!! \param [inout] <message>
 !!
   subroutine define_blocks (component, Block, isc, iec, jsc, jec, kpts, &
                             nx_block, ny_block, message)
-    character(len=*),         intent(in)    :: component
-    type(block_control_type), intent(inout) :: Block
+    character(len=*),         intent(in)    :: component !< Component name string
+    type(block_control_type), intent(inout) :: Block !< Returns instantiated @ref block_control_type
     integer,                  intent(in)    :: isc, iec, jsc, jec, kpts
     integer,                  intent(in)    :: nx_block, ny_block
-    logical,                  intent(inout) :: message
+    logical,                  intent(inout) :: message !< flag for outputting debug message
 
 !-------------------------------------------------------------------------------
 ! Local variables:
@@ -107,6 +94,7 @@ contains
 !       i
 !       j
 !       nblks
+!       ix
 !       ii
 !       jj
 !-------------------------------------------------------------------------------
@@ -115,7 +103,7 @@ contains
     integer, dimension(nx_block) :: i1, i2
     integer, dimension(ny_block) :: j1, j2
     character(len=256) :: text
-    integer :: i, j, nblks, ii, jj
+    integer :: i, j, nblks, ix, ii, jj
 
     if (message) then
       if ((mod(iec-isc+1,nx_block) .ne. 0) .or. (mod(jec-jsc+1,ny_block) .ne. 0)) then
@@ -147,7 +135,7 @@ contains
     Block%ny_block = ny_block
     Block%nblks = nblks
 
-    if (.not._ALLOCATED(Block%ibs)) &
+    if (.not.allocated(Block%ibs)) &
          allocate (Block%ibs(nblks), &
                    Block%ibe(nblks), &
                    Block%jbs(nblks), &
@@ -178,53 +166,31 @@ contains
 
 
 !###############################################################################
-!> \fn define_blocks_packed
-!!
-!! \brief Creates and populates a data type which is used for defining the
+!> @brief Creates and populates a data type which is used for defining the
 !!        sub-blocks of the MPI-domain to enhance OpenMP and memory performance.
-!!        Uses a packed concept
-!!
-!! <b> Parameters: </b>
-!!
-!! \code{.f90}
-!! character(len=*),         intent(in)    :: component
-!! type(block_control_type), intent(inout) :: Block
-!! integer,                  intent(in)    :: isc, iec, jsc, jec, kpts
-!! integer,                  intent(inout) :: blksz
-!! logical,                  intent(inout) :: message
-!! \endcode
-!!
-!! \param [in]    <component>
-!! \param [inout] <Block>
-!! \param [in]    <isc>
-!! \param [in]    <iec>
-!! \param [in]    <jsc>
-!! \param [in]    <jec>
-!! \param [in]    <kpts>
-!! \param [inout] <blksz>
-!! \param [inout] <message>
+!!        Uses a packed concept.
 !!
   subroutine define_blocks_packed (component, Block, isc, iec, jsc, jec, &
                                    kpts, blksz, message)
-    character(len=*),         intent(in)    :: component
-    type(block_control_type), intent(inout) :: Block
+    character(len=*),         intent(in)    :: component !< Component name string
+    type(block_control_type), intent(inout) :: Block !< Returns instantiated @ref block_control_type
     integer,                  intent(in)    :: isc, iec, jsc, jec, kpts
-    integer,                  intent(inout) :: blksz
-    logical,                  intent(inout) :: message
+    integer,                  intent(inout) :: blksz !< block size
+    logical,                  intent(inout) :: message !< flag for outputting debug message
 
 !-------------------------------------------------------------------------------
 ! Local variables:
 !       nblks
 !       lblksz
 !       tot_pts
-!       ii
-!       jj
 !       nb
 !       ix
+!       ii
+!       jj
 !       text
 !-------------------------------------------------------------------------------
 
-    integer :: nblks, lblksz, tot_pts, ii, jj,  nb, ix
+    integer :: nblks, lblksz, tot_pts, nb, ix, ii, jj
     character(len=256) :: text
 
     tot_pts = (iec - isc + 1) * (jec - jsc + 1)
@@ -255,7 +221,7 @@ contains
     Block%jec   = jec
     Block%npz   = kpts
     Block%nblks = nblks
-    if (.not. _ALLOCATED(Block%blksz)) &
+    if (.not. allocated(Block%blksz)) &
       allocate (Block%blksz(nblks), &
                 Block%index(nblks), &
                 Block%blkno(isc:iec,jsc:jec), &
@@ -290,3 +256,5 @@ contains
   end subroutine define_blocks_packed
 
 end module block_control_mod
+!> @}
+! close documentation grouping

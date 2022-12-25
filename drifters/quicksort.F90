@@ -16,11 +16,18 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @cond
 #undef _TYP
 #define _TYP integer
+!> @endcond
 
-! Written by Magnus Lie Hetland 
+!> @defgroup quicksort quicksort
+!> @ingroup drifters
+!> @brief Fortran implementation of quicksort to be used in @ref drifters_core
+!!
+!> @author Magnus Lie Hetland
 
+!> Create array partitions for quicksort
 function qksrt_partition(n, list, start, end) result(top)
   implicit none
   integer, intent(in) :: n
@@ -71,6 +78,7 @@ function qksrt_partition(n, list, start, end) result(top)
 
 end function qksrt_partition
 
+!> quicksort a given list
 recursive subroutine qksrt_quicksort(n, list, start, end)
      implicit none
      integer, intent(in) :: n
@@ -84,14 +92,3 @@ recursive subroutine qksrt_quicksort(n, list, start, end)
         call qksrt_quicksort(n, list, split+1, end)
      endif
 end subroutine qksrt_quicksort
-
-
-#ifdef _TEST_SORT
-      program test
-        implicit none
-        integer :: list(16) = (/6, 2, 3, 4, 1, 45, 3432, 3245, 32545, 66555, 32, 1,3, -43254, 324, 54/)
-        print *,'before list=', list
-        call qksrt_quicksort(size(list), list, 1, size(list))
-        print *,'after  list=', list
-      end program test
-#endif

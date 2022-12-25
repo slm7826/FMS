@@ -19,40 +19,31 @@
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
 
-  ! <SUBROUTINE NAME="mpp_domains_set_stack_size">
-  !  <OVERVIEW>
-  !    Set user stack size.
-  ! </OVERVIEW>
-  ! <DESCRIPTION>
-  !    This sets the size of an array that is used for internal storage by
-  !    <TT>mpp_domains</TT>. This array is used, for instance, to buffer the
-  !    data sent and received in halo updates.
-  !    
-  !    This call has implied global synchronization. It should be
-  !    placed somewhere where all PEs can call it.
-  !  </DESCRIPTION>
-  !  <TEMPLATE>
-  !    call mpp_domains_set_stack_size(n)
-  !  </TEMPLATE>
-  !  <IN NAME="n" TYPE="integer"></IN>
-  ! </SUBROUTINE>
+!> @file
+!> @brief Utility routines for getting and setting values in @ref mpp_domains_mod
+
+!> @ingroup mpp_domains_mod
+!> @{
+
+  !> @brief Set user stack size.
+  !!
+  !> This sets the size of an array that is used for internal storage by
+  !! <TT>mpp_domains</TT>. This array is used, for instance, to buffer the
+  !! data sent and received in halo updates.<br>
+  !! This call has implied global synchronization. It should be
+  !! placed somewhere where all PEs can call it.
   subroutine mpp_domains_set_stack_size(n)
     !set the mpp_domains_stack variable to be at least n LONG words long
     integer, intent(in) :: n
     character(len=8) :: text
 
     if( n.LE.mpp_domains_stack_size )return
-#ifdef use_libSMA
-    call mpp_malloc( ptr_domains_stack, n, mpp_domains_stack_size )
-    call mpp_malloc( ptr_domains_stack_nonblock, n, mpp_domains_stack_size )
-#else
     if( allocated(mpp_domains_stack) )deallocate(mpp_domains_stack)
     allocate( mpp_domains_stack(n) )
     if( allocated(mpp_domains_stack_nonblock) )deallocate(mpp_domains_stack_nonblock)
     allocate( mpp_domains_stack_nonblock(n) )
 
     mpp_domains_stack_size = n
-#endif
     write( text,'(i8)' )n
     if( mpp_pe().EQ.mpp_root_pe() )call mpp_error( NOTE, 'MPP_DOMAINS_SET_STACK_SIZE: stack size set to '//text//'.' )
 
@@ -73,7 +64,7 @@
     mpp_domain1D_eq = ( a%compute%begin.EQ.b%compute%begin .AND. &
          a%compute%end  .EQ.b%compute%end   .AND. &
          a%data%begin   .EQ.b%data%begin    .AND. &
-         a%data%end     .EQ.b%data%end      .AND. & 
+         a%data%end     .EQ.b%data%end      .AND. &
          a%global%begin .EQ.b%global%begin  .AND. &
          a%global%end   .EQ.b%global%end    )
     !compare pelists
@@ -96,7 +87,7 @@
     logical                    :: mpp_domain2D_eq
     type(domain2D), intent(in) :: a, b
     integer                    :: nt, n
-   
+
     mpp_domain2d_eq = size(a%x(:)) .EQ. size(b%x(:))
     nt = size(a%x(:))
     do n = 1, nt
@@ -130,7 +121,7 @@
   !                                                                             !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine mpp_get_compute_domain1D( domain, begin, end, size, max_size, is_global ) 
+  subroutine mpp_get_compute_domain1D( domain, begin, end, size, max_size, is_global )
     type(domain1D),     intent(in) :: domain
     integer, intent(out), optional :: begin, end, size, max_size
     logical, intent(out), optional :: is_global
@@ -281,6 +272,60 @@
     return
   end subroutine mpp_get_memory_domain2D
 
+  !> @brief Modifies the indices in the domain_axis_spec type to those of the supergrid
+  subroutine mpp_set_super_grid_indices(grid)
+   type(domain_axis_spec), intent(inout) :: grid !< domain_axis_spec type
+
+   grid%begin = 2*grid%begin-1
+   grid%end = 2*grid%end+1
+   grid%size = grid%end-grid%begin+1
+
+  end subroutine mpp_set_super_grid_indices
+
+  !> @brief Modifies the indices of the input domain to create the supergrid domain
+  !!
+  !> This is an example of how to use mpp_create_super_grid_domain
+  !! @code{.F90}
+  !! call mpp_copy_domain(domain_in, domain_out)
+  !! call super_grid_domain(domain_out)
+  !! @endcode
+  !! domain_in is the original domain, domain_out is the domain with the supergrid indices.
+  subroutine mpp_create_super_grid_domain(domain)
+    type(domain2D), intent(inout) :: domain !< Input domain
+
+    integer :: xbegin !< Begining x indices
+    integer :: ybegin !< Begining y indices
+    integer :: xend   !< Ending x indices
+    integer :: yend   !< Ending y indices
+    integer :: xsize  !< Size of the x domain
+    integer :: ysize  !< Size of the y domain
+    integer :: i      !< For loops
+
+    call mpp_get_global_domain(domain, xbegin=xbegin, xend=xend, ybegin=ybegin, yend=yend, xsize=xsize, ysize=ysize)
+    call mpp_set_global_domain (domain, 2*xbegin-1, 2*xend+1, 2*ybegin-1, 2*yend+1, 2*(xend-xbegin)+3, &
+                               &  2*(yend-ybegin)+3)
+
+    call mpp_get_compute_domain(domain, xbegin=xbegin, xend=xend, ybegin=ybegin, yend=yend, xsize=xsize, ysize=ysize)
+    call mpp_set_compute_domain (domain, 2*xbegin-1, 2*xend+1, 2*ybegin-1, 2*yend+1, 2*(xend-xbegin)+3, &
+                                &  2*(yend-ybegin)+3)
+
+    call mpp_get_data_domain(domain, xbegin=xbegin, xend=xend, ybegin=ybegin, yend=yend, xsize=xsize, ysize=ysize)
+    call mpp_set_data_domain (domain, 2*xbegin-1, 2*xend+1, 2*ybegin-1, 2*yend+1, 2*(xend-xbegin)+3, 2*(yend-ybegin)+3)
+
+    do i=1, size(domain%list(:))
+        call mpp_set_super_grid_indices(domain%list(i-1)%x(1)%global)
+        call mpp_set_super_grid_indices(domain%list(i-1)%y(1)%global)
+
+        call mpp_set_super_grid_indices(domain%list(i-1)%x(1)%compute)
+        call mpp_set_super_grid_indices(domain%list(i-1)%y(1)%compute)
+
+        !< There is no data domain in domain%list
+        !call mpp_set_super_grid_indices(domain%list(i-1)%x(1)%data)
+        !call mpp_set_super_grid_indices(domain%list(i-1)%y(1)%data)
+    enddo
+
+  end subroutine mpp_create_super_grid_domain
+
   !#####################################################################
   subroutine mpp_set_compute_domain1D( domain, begin, end, size, is_global )
     type(domain1D), intent(inout) :: domain
@@ -367,20 +412,14 @@
   end subroutine mpp_set_global_domain2D
 
   !#####################################################################
-  ! <SUBROUTINE NAME="mpp_get_domain_components">
-  !  <OVERVIEW>
-  !    Retrieve 1D components of 2D decomposition.
-  !  </OVERVIEW>
-  !  <DESCRIPTION>
-  !    It is sometime necessary to have direct recourse to the domain1D types
-  !    that compose a domain2D object. This call retrieves them.
-  !  </DESCRIPTION>
-  !  <TEMPLATE>
-  !    call mpp_get_domain_components( domain, x, y )
-  !  </TEMPLATE>
-  !  <IN NAME="domain" TYPE="type(domain2D)"></IN>
-  !  <OUT NAME="x,y"  TYPE="type(domain1D)"></OUT>
-  ! </SUBROUTINE>
+
+  !> @brief Retrieve 1D components of 2D decomposition.
+  !!
+  !! It is sometime necessary to have direct recourse to the domain1D types
+  !! that compose a domain2D object. This call retrieves them.
+  !! @code{.F90}
+  !!    call mpp_get_domain_components( domain, x, y )
+  !! @endcode
   subroutine mpp_get_domain_components( domain, x, y, tile_count )
     type(domain2D),            intent(in) :: domain
     type(domain1D), intent(inout), optional :: x, y
@@ -397,7 +436,7 @@
   !#####################################################################
   subroutine mpp_get_compute_domains1D( domain, begin, end, size )
     type(domain1D),                   intent(in) :: domain
-    integer, intent(out), optional, dimension(:) :: begin, end, size 
+    integer, intent(out), optional, dimension(:) :: begin, end, size
 
     if( .NOT.module_is_initialized ) &
          call mpp_error( FATAL, 'MPP_GET_COMPUTE_DOMAINS: must first call mpp_domains_init.' )
@@ -479,6 +518,93 @@ subroutine mpp_get_compute_domains2D( domain, xbegin, xend, xsize, ybegin, yend,
  return
 end subroutine mpp_get_compute_domains2D
 
+  !#####################################################################
+  subroutine mpp_get_global_domains1D( domain, begin, end, size )
+    type(domain1D),                   intent(in) :: domain
+    integer, intent(out), optional, dimension(:) :: begin, end, size
+
+    if( .NOT.module_is_initialized ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: must first call mpp_domains_init.' )
+    !we use shape instead of size for error checks because size is used as an argument
+    if( PRESENT(begin) )then
+       if( any(shape(begin).NE.shape(domain%list)) ) &
+            call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: begin array size does not match domain.' )
+       begin(:) = domain%list(:)%global%begin
+    end if
+    if( PRESENT(end) )then
+       if( any(shape(end).NE.shape(domain%list)) ) &
+            call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: end array size does not match domain.' )
+            end(:) = domain%list(:)%global%end
+    end if
+    if( PRESENT(size) )then
+       if( any(shape(size).NE.shape(domain%list)) ) &
+           call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: size array size does not match domain.' )
+           size(:) = domain%list(:)%global%size
+    end if
+    return
+  end subroutine mpp_get_global_domains1D
+
+
+!#####################################################################
+subroutine mpp_get_global_domains2D( domain, xbegin, xend, xsize, ybegin, yend, ysize, position )
+ type(domain2D),                   intent(in) :: domain
+ integer, intent(out), optional, dimension(:) :: xbegin, xend, xsize, ybegin, yend, ysize
+ integer, intent(in ), optional               :: position
+
+ integer :: i, ishift, jshift
+
+ call mpp_get_domain_shift( domain, ishift, jshift, position )
+
+
+ if( .NOT.module_is_initialized ) &
+      call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: must first call mpp_domains_init.' )
+
+ if( PRESENT(xbegin) )then
+    if( size(xbegin(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: xbegin array size does not match domain.' )
+    do i = 1, size(xbegin(:))
+       xbegin(i) = domain%list(i-1)%x(1)%global%begin
+    end do
+ end if
+ if( PRESENT(xend) )then
+    if( size(xend(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: xend array size does not match domain.' )
+    do i = 1, size(xend(:))
+       xend(i) = domain%list(i-1)%x(1)%global%end + ishift
+    end do
+ end if
+ if( PRESENT(xsize) )then
+    if( size(xsize(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: xsize array size does not match domain.' )
+    do i = 1, size(xsize(:))
+       xsize(i) = domain%list(i-1)%x(1)%global%size + ishift
+    end do
+ end if
+ if( PRESENT(ybegin) )then
+    if( size(ybegin(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: ybegin array size does not match domain.' )
+    do i = 1, size(ybegin(:))
+       ybegin(i) = domain%list(i-1)%y(1)%global%begin
+    end do
+ end if
+ if( PRESENT(yend) )then
+    if( size(yend(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: yend array size does not match domain.' )
+    do i = 1, size(yend(:))
+       yend(i) = domain%list(i-1)%y(1)%global%end + jshift
+    end do
+ end if
+ if( PRESENT(ysize) )then
+    if( size(ysize(:)).NE.size(domain%list(:)) ) &
+         call mpp_error( FATAL, 'MPP_GET_GLOBAL_DOMAINS: ysize array size does not match domain.' )
+    do i = 1, size(ysize(:))
+       ysize(i) = domain%list(i-1)%y(1)%global%size + jshift
+    end do
+ end if
+ return
+end subroutine mpp_get_global_domains2D
+
+
 !#####################################################################
 subroutine mpp_get_domain_extents1D(domain, xextent, yextent)
    type(domain2d),            intent(in) :: domain
@@ -487,10 +613,12 @@ subroutine mpp_get_domain_extents1D(domain, xextent, yextent)
 
    if(domain%ntiles .NE. 1) call mpp_error(FATAL,"mpp_domains_util.inc(mpp_get_domain_extents1D): "// &
        "ntiles is more than 1, please use mpp_get_domain_extents2D")
-   if(size(xextent) .NE. size(domain%x(1)%list(:)))  call mpp_error(FATAL,"mpp_domains_util.inc(mpp_get_domain_extents1D): "// &
-       "size(xextent) does not equal to size(domain%x(1)%list(:)))")
-   if(size(yextent) .NE. size(domain%y(1)%list(:)))  call mpp_error(FATAL,"mpp_domains_util.inc(mpp_get_domain_extents1D): "// &
-       "size(yextent) does not equal to size(domain%y(1)%list(:)))")
+   if(size(xextent) .NE. size(domain%x(1)%list(:)))  call mpp_error(FATAL, &
+       & "mpp_domains_util.inc(mpp_get_domain_extents1D): "// &
+       & "size(xextent) does not equal to size(domain%x(1)%list(:)))")
+   if(size(yextent) .NE. size(domain%y(1)%list(:)))  call mpp_error(FATAL, &
+       & "mpp_domains_util.inc(mpp_get_domain_extents1D): "// &
+       & "size(yextent) does not equal to size(domain%y(1)%list(:)))")
    do n = 0, size(domain%x(1)%list(:))-1
       xextent(n) = domain%x(1)%list(n)%compute%size
    enddo
@@ -501,7 +629,7 @@ subroutine mpp_get_domain_extents1D(domain, xextent, yextent)
 end subroutine mpp_get_domain_extents1D
 
 !#####################################################################
-! This will return xextent and yextent for each tile
+!>  This will return xextent and yextent for each tile
 subroutine mpp_get_domain_extents2D(domain, xextent, yextent)
    type(domain2d),             intent(in) :: domain
    integer, dimension(:,:), intent(inout) :: xextent, yextent
@@ -533,7 +661,7 @@ subroutine mpp_get_domain_extents2D(domain, xextent, yextent)
 
 
 end subroutine mpp_get_domain_extents2D
-   
+
 !#####################################################################
 function mpp_get_domain_pe(domain)
    type(domain2d), intent(in) :: domain
@@ -644,32 +772,19 @@ subroutine mpp_get_layout2D( domain, layout )
 end subroutine mpp_get_layout2D
 
 !#####################################################################
-  ! <SUBROUTINE NAME="mpp_get_domain_shift">
-  !  <OVERVIEW>
-  !    Returns the shift value in x and y-direction according to domain position.. 
-  !  </OVERVIEW>
-  !  <DESCRIPTION>
-  !    When domain is symmetry, one extra point maybe needed in
-  !    x- and/or y-direction. This routine will return the shift value based
-  !    on the position
-  !  </DESCRIPTION>
-  !  <TEMPLATE>
-  !    call mpp_get_domain_shift( domain, ishift, jshift, position )
-  !  </TEMPLATE>
-  !  <IN NAME="domain" TYPE="type(domain2D)">
-  !    predefined data contains 2-d domain decomposition.
-  !  </IN>
-  !  <OUT NAME="ishift, jshift"  TYPE="integer">
-  !    return value will be 0 or 1.
-  !  </OUT>
-  !  <IN NAME="position" TYPE="integer">
-  !   position of data. Its value can be CENTER, EAST, NORTH or CORNER.
-  !  </OUT>
-  ! </SUBROUTINE>
+
+  !> @brief Returns the shift value in x and y-direction according to domain position..
+  !!
+  !> When domain is symmetry, one extra point maybe needed in
+  !!    x- and/or y-direction. This routine will return the shift value based
+  !!    on the position
+  !! @code{.F90}
+  !!   call mpp_get_domain_shift( domain, ishift, jshift, position )
+  !! @endcode
 subroutine mpp_get_domain_shift(domain, ishift, jshift, position)
-  type(domain2D),     intent(in) :: domain
-  integer,           intent(out) :: ishift, jshift
-  integer, optional,  intent(in) :: position
+  type(domain2D),     intent(in) :: domain!> predefined data contains 2-d domain decomposition.
+  integer,           intent(out) :: ishift, jshift!< return value will be 0 or 1.
+  integer, optional,  intent(in) :: position!< position of data. Its value can be CENTER, EAST, NORTH or CORNER.
   integer :: pos
 
   ishift = 0 ; jshift = 0
@@ -691,14 +806,12 @@ end subroutine mpp_get_domain_shift
 
 !#####################################################################
 
+    !> Return PE to the righ/left of this PE-domain.
     subroutine mpp_get_neighbor_pe_1d(domain, direction, pe)
-
-      ! Return PE to the righ/left of this PE-domain.    
-  
       type(domain1D), intent(inout) :: domain
       integer, intent(in)           :: direction
       integer, intent(out)          :: pe
-      
+
       integer ipos, ipos2, npx
 
       pe   = NULL_PE
@@ -711,13 +824,13 @@ end subroutine mpp_get_domain_shift
          ! neighbor on the left
          ipos2 = ipos - 1
          if(ipos2 <    0) then
-            if(domain%cyclic) then 
+            if(domain%cyclic) then
                ipos2 = npx-1
             else
                ipos2 = -999
             endif
          endif
-             
+
       case (0)
          ! identity
          ipos2 = ipos
@@ -736,15 +849,13 @@ end subroutine mpp_get_domain_shift
       end select
 
       if(ipos2 >= 0) pe = domain%list(ipos2)%pe
-         
+
     end subroutine mpp_get_neighbor_pe_1d
 !#####################################################################
 
+    !> Return PE North/South/East/West of this PE-domain.
+    !! direction must be NORTH, SOUTH, EAST or WEST.
     subroutine mpp_get_neighbor_pe_2d(domain, direction, pe)
-
-      ! Return PE North/South/East/West of this PE-domain.
-      ! direction must be NORTH, SOUTH, EAST or WEST.
-
       type(domain2D), intent(inout) :: domain
       integer, intent(in)           :: direction
       integer, intent(out)          :: pe
@@ -792,14 +903,14 @@ end subroutine mpp_get_domain_shift
       ipos = ipos0 + ix
       jpos = jpos0 + iy
 
-      
+
       if( (ipos < 0 .or. ipos > npx-1) .and. domain%x(1)%cyclic ) then
          ! E/W cyclic domain
          ipos = modulo(ipos, npx)
       endif
 
       if(    (ipos < 0     .and. btest(domain%fold,WEST)) .or. &
-           & (ipos > npx-1 .and. btest(domain%fold,EAST)) ) then  
+           & (ipos > npx-1 .and. btest(domain%fold,EAST)) ) then
          ! E or W folded domain
            ipos = ipos0
            jpos = npy-jpos-1
@@ -811,7 +922,7 @@ end subroutine mpp_get_domain_shift
       endif
 
       if(    (jpos < 0     .and. btest(domain%fold,SOUTH)) .or. &
-           & (jpos > npy-1 .and. btest(domain%fold,NORTH)) ) then         
+           & (jpos > npy-1 .and. btest(domain%fold,NORTH)) ) then
          ! N or S folded
            ipos = npx-ipos-1
            jpos = jpos0
@@ -825,7 +936,7 @@ end subroutine mpp_get_domain_shift
 
 
     end subroutine mpp_get_neighbor_pe_2d
-      
+
 
 !#######################################################################
 
@@ -874,9 +985,9 @@ end subroutine mpp_get_domain_shift
           'mpp_domains_util.inc: halo size to be updated are all zero, no update will be done')
        return
     end if
-    if(  (whalo == -domain%whalo .AND. domain%whalo .NE. 0) .or.  & 
+    if(  (whalo == -domain%whalo .AND. domain%whalo .NE. 0) .or.  &
          (ehalo == -domain%ehalo .AND. domain%ehalo .NE. 0) .or.  &
-         (shalo == -domain%shalo .AND. domain%shalo .NE. 0) .or.  & 
+         (shalo == -domain%shalo .AND. domain%shalo .NE. 0) .or.  &
          (nhalo == -domain%nhalo .AND. domain%nhalo .NE. 0) ) then
        domain_update_is_needed = .false.
        call mpp_error(NOTE, 'mpp_domains_util.inc: at least one of w/e/s/n halo size to be updated '// &
@@ -886,8 +997,8 @@ end subroutine mpp_get_domain_shift
 
   end function domain_update_is_needed
 !#######################################################################
-  ! this routine found the domain has the same halo size with the input
-  ! whalo, ehalo, 
+  !> this routine found the domain has the same halo size with the input
+  !! whalo, ehalo,
   function search_update_overlap(domain, whalo, ehalo, shalo, nhalo, position)
     type(domain2d),          intent(inout) :: domain
     integer,                    intent(in) :: whalo, ehalo, shalo, nhalo
@@ -917,7 +1028,7 @@ end subroutine mpp_get_domain_shift
 
     search_update_overlap => update_ref
 
-    do 
+    do
        if(whalo == search_update_overlap%whalo .AND. ehalo == search_update_overlap%ehalo .AND. &
             shalo == search_update_overlap%shalo .AND. nhalo == search_update_overlap%nhalo ) then
             exit ! found domain
@@ -936,7 +1047,7 @@ end subroutine mpp_get_domain_shift
        else
           search_update_overlap => search_update_overlap%next
        end if
-  
+
     end do
 
     update_ref => NULL()
@@ -944,7 +1055,7 @@ end subroutine mpp_get_domain_shift
   end function search_update_overlap
 
 !#######################################################################
-  ! this routine found the check at certain position 
+  !> this routine finds the check at certain position
   function search_check_overlap(domain, position)
     type(domain2d),             intent(in) :: domain
     integer,                    intent(in) :: position
@@ -966,7 +1077,7 @@ end subroutine mpp_get_domain_shift
   end function search_check_overlap
 
 !#######################################################################
-  ! this routine found the bound at certain position 
+  !> This routine finds the bound at certain position
   function search_bound_overlap(domain, position)
     type(domain2d),             intent(in) :: domain
     integer,                    intent(in) :: position
@@ -988,7 +1099,7 @@ end subroutine mpp_get_domain_shift
   end function search_bound_overlap
 
   !########################################################################
-  ! return the tile_id on current pe
+  !> Returns the tile_id on current pe
   function mpp_get_tile_id(domain)
      type(domain2d),                  intent(in) :: domain
      integer, dimension(size(domain%tile_id(:))) :: mpp_get_tile_id
@@ -999,7 +1110,7 @@ end subroutine mpp_get_domain_shift
   end function mpp_get_tile_id
 
   !#######################################################################
-  ! return the tile_id on current pelist. one-tile-per-pe is assumed.
+  !> Return the tile_id on current pelist. one-tile-per-pe is assumed.
   subroutine mpp_get_tile_list(domain, tiles)
      type(domain2d), intent(in) :: domain
      integer,     intent(inout) :: tiles(:)
@@ -1011,12 +1122,12 @@ end subroutine mpp_get_domain_shift
        if(size(domain%list(i-1)%tile_id(:)) > 1) call mpp_error( FATAL,  &
                'mpp_get_tile_list: only support one-tile-per-pe now, contact developer');
        tiles(i) = domain%list(i-1)%tile_id(1)
-    end do     
+    end do
 
   end subroutine mpp_get_tile_list
 
   !########################################################################
-  ! return number of tiles in mosaic
+  !> Returns number of tiles in mosaic
   function mpp_get_ntile_count(domain)
      type(domain2d),                  intent(in) :: domain
      integer                                     :: mpp_get_ntile_count
@@ -1027,7 +1138,7 @@ end subroutine mpp_get_domain_shift
   end function mpp_get_ntile_count
 
   !########################################################################
-  ! return number of tile on current pe
+  !> Returns number of tile on current pe
   function mpp_get_current_ntile(domain)
      type(domain2d),                  intent(in) :: domain
      integer                                     :: mpp_get_current_ntile
@@ -1038,9 +1149,9 @@ end subroutine mpp_get_domain_shift
   end function mpp_get_current_ntile
 
   !#######################################################################
-  ! return if current pe is the root pe of the tile, if number of tiles on current pe 
-  ! is greater than 1, will return true, if isc==isg and jsc==jsg also will return true,
-  ! otherwise false will be returned.
+  !> Returns if current pe is the root pe of the tile, if number of tiles on current pe
+  !! is greater than 1, will return true, if isc==isg and jsc==jsg also will return true,
+  !! otherwise false will be returned.
   function mpp_domain_is_tile_root_pe(domain)
      type(domain2d), intent(in) :: domain
      logical                    :: mpp_domain_is_tile_root_pe
@@ -1050,13 +1161,13 @@ end subroutine mpp_get_domain_shift
   end function mpp_domain_is_tile_root_pe
 
   !#########################################################################
-  ! return number of processors used on current tile.
+  !> Returns number of processors used on current tile.
   function mpp_get_tile_npes(domain)
     type(domain2d), intent(in)  :: domain
     integer                     :: mpp_get_tile_npes
     integer                     :: i, tile
 
-    !--- When there is more than one tile on this pe, we assume each tile will be 
+    !--- When there is more than one tile on this pe, we assume each tile will be
     !--- limited to this pe.
     if(size(domain%tile_id(:)) > 1) then
        mpp_get_tile_npes = 1
@@ -1065,13 +1176,13 @@ end subroutine mpp_get_domain_shift
       tile = domain%tile_id(1)
       do i = 0, size(domain%list(:))-1
          if(tile == domain%list(i)%tile_id(1) )  mpp_get_tile_npes =  mpp_get_tile_npes + 1
-      end do     
+      end do
     endif
 
   end function mpp_get_tile_npes
 
   !########################################################################
-  ! get the processors list used on current tile.
+  !> Get the processors list used on current tile.
   subroutine mpp_get_tile_pelist(domain, pelist)
     type(domain2d), intent(in)  :: domain
     integer,      intent(inout) :: pelist(:)
@@ -1252,7 +1363,7 @@ end subroutine mpp_get_tile_compute_domains
     integer,                intent(in) :: action
     integer,                intent(in) :: p
     integer, dimension(:), intent(out) :: is, ie, js, je
-    integer, dimension(:), intent(out) :: dir, rot    
+    integer, dimension(:), intent(out) :: dir, rot
     integer, optional,      intent(in) :: position
     type(overlapSpec),      pointer    :: update => NULL()
     type(overlap_type),     pointer    :: overlap => NULL()
@@ -1284,7 +1395,8 @@ end subroutine mpp_get_tile_compute_domains
     count = overlap%count
     if(size(is(:)) .NE. count .OR. size(ie (:)) .NE. count .OR. size(js (:)) .NE. count .OR.  &
        size(je(:)) .NE. count .OR. size(dir(:)) .NE. count .OR. size(rot(:)) .NE. count ) &
-       call mpp_error( FATAL, "mpp_domains_mod(mpp_get_overlap): size mismatch between number of overlap and array size")
+       call mpp_error( FATAL, &
+                      &  "mpp_domains_mod(mpp_get_overlap): size mismatch between number of overlap and array size")
 
     is  = overlap%is      (1:count)
     ie  = overlap%ie      (1:count)
@@ -1311,14 +1423,14 @@ end subroutine mpp_get_tile_compute_domains
   function mpp_get_domain_root_pe(domain)
      type(domain2d),    intent(in) :: domain
      integer                       :: mpp_get_domain_root_pe
-     
+
      mpp_get_domain_root_pe = domain%list(0)%pe
 
   end function mpp_get_domain_root_pe
   !#################################################################
   function mpp_get_domain_npes(domain)
      type(domain2d),    intent(in) :: domain
-     integer                       :: mpp_get_domain_npes  
+     integer                       :: mpp_get_domain_npes
 
      mpp_get_domain_npes = size(domain%list(:))
 
@@ -1336,8 +1448,8 @@ end subroutine mpp_get_tile_compute_domains
         call mpp_error(FATAL, "mpp_get_domain_pelist: size(pelist(:)) .NE. size(domain%list(:)) ")
      endif
 
-     do p = 0, size(domain%list(:))-1     
-        pelist(p+1) = domain%list(p)%pe 
+     do p = 0, size(domain%list(:))-1
+        pelist(p+1) = domain%list(p)%pe
      enddo
 
      return
@@ -1398,7 +1510,7 @@ end subroutine mpp_get_tile_compute_domains
        if(rank_x .LE. 0) rank_x = rank_x + nlist
     endif
     if(nrecv_y>0) then
-       rank_y = overlap_y%recv(1)%pe - domain%pe    
+       rank_y = overlap_y%recv(1)%pe - domain%pe
        if(rank_y .LE. 0) rank_y = rank_y + nlist
     endif
     get_rank_recv = max(rank_x, rank_y)
@@ -1424,7 +1536,7 @@ end subroutine mpp_get_tile_compute_domains
     nlist = size(domain%list(:))
     nrecv_x = update_x%nrecv
     nrecv_y = update_y%nrecv
- 
+
     ntot = nrecv_x + nrecv_y
 
     n  = 1
@@ -1490,7 +1602,7 @@ end subroutine mpp_get_tile_compute_domains
     nlist = size(domain%list(:))
     nsend_x = update_x%nsend
     nsend_y = update_y%nsend
- 
+
     ntot = nsend_x + nsend_y
     n  = 1
     ix = 1
@@ -1544,7 +1656,7 @@ end subroutine mpp_get_tile_compute_domains
   end function get_vector_send
 
 
-  !############################################################################  
+  !############################################################################
   function get_rank_unpack(domain, overlap_x, overlap_y, rank_x, rank_y, ind_x, ind_y)
     type(domain2D),    intent(in) :: domain
     type(overlapSpec), intent(in) :: overlap_x, overlap_y
@@ -1597,30 +1709,51 @@ end subroutine mpp_get_tile_compute_domains
     domain%symmetry = symmetry
 
   end subroutine mpp_set_domain_symmetry
-  
 
-  subroutine mpp_copy_domain1D(domain_in, domain_out)
-     type(domain1D),    intent(in) :: domain_in
-     type(domain1D), intent(inout) :: domain_out
+  !> @brief Copies input 1d domain to the output 1d domain
+  recursive subroutine mpp_copy_domain1D(domain_in, domain_out)
+     type(domain1D),    intent(in) :: domain_in  !< Input domain
+     type(domain1D), intent(inout) :: domain_out !< Output domain
+
+     integer                       :: i        !< For loop
+     integer                       :: starting !< Starting bounds
+     integer                       :: ending   !< Ending bounds
 
      domain_out%compute = domain_in%compute
      domain_out%data    = domain_in%data
      domain_out%global  = domain_in%global
      domain_out%memory  = domain_in%memory
      domain_out%cyclic  = domain_in%cyclic
-     domain_out%pe      = domain_in%pe 
-     domain_out%pos     = domain_in%pos 
+     domain_out%pe      = domain_in%pe
+     domain_out%pos     = domain_in%pos
+
+     if (associated(domain_in%list)) then
+         starting = lbound(domain_in%list, 1)
+         ending = ubound(domain_in%list, 1)
+         allocate(domain_out%list(starting:ending))
+
+         do i = starting, ending
+            call mpp_copy_domain1D(domain_in%list(i), domain_out%list(i))
+         enddo
+
+     endif
 
   end subroutine mpp_copy_domain1D
 
   !#################################################################
-  !z1l: This is not fully implemented. The current purpose is to make
-  !     it work in read_data.
+  !> @brief Copies input 2d domain to the output 2d domain
   subroutine mpp_copy_domain2D(domain_in, domain_out)
-     type(domain2D),    intent(in) :: domain_in
-     type(domain2D), intent(inout) :: domain_out
+     type(domain2D),    intent(in) :: domain_in  !< Input domain
+     type(domain2D), intent(inout) :: domain_out !< Output domain
 
-     integer :: n, ntiles
+     integer :: n,i          !< For loops
+     integer :: ntiles       !< Number of tiles
+     integer :: starting(2)  !< Starting bounds
+     integer :: ending(2)    !< Ending bounds
+
+     if (associated(domain_out%x)) then
+         call mpp_error(FATAL, "mpp_copy_domain: domain_out is already set")
+     endif
 
      domain_out%id             = domain_in%id
      domain_out%pe             = domain_in%pe
@@ -1646,15 +1779,114 @@ end subroutine mpp_get_tile_compute_domains
         call mpp_copy_domain1D(domain_in%x(n), domain_out%x(n))
         call mpp_copy_domain1D(domain_in%y(n), domain_out%y(n))
      enddo
-     domain_out%tile_id = domain_in%tile_id
+
+     if (associated(domain_in%pearray)) then
+         starting = lbound(domain_in%pearray)
+         ending = ubound(domain_in%pearray)
+
+         allocate(domain_out%pearray(starting(1):ending(1), starting(2):ending(2)))
+         domain_out%pearray=domain_in%pearray
+     endif
+
+     if (associated(domain_in%tile_id)) then
+         starting(1) = lbound(domain_in%tile_id,1)
+         ending(1) = ubound(domain_in%tile_id,1)
+
+         allocate(domain_out%tile_id(starting(1):ending(1)))
+         domain_out%tile_id = domain_in%tile_id
+     endif
+
+     if (associated(domain_in%tile_id_all)) then
+         starting(1) = lbound(domain_in%tile_id_all,1)
+         ending(1) = ubound(domain_in%tile_id_all,1)
+
+         allocate(domain_out%tile_id_all(starting(1):ending(1)))
+         domain_out%tile_id_all = domain_in%tile_id_all
+     endif
+
+     if (associated(domain_in%list)) then
+         starting(1) = lbound(domain_in%list,1)
+         ending(1) = ubound(domain_in%list,1)
+
+         allocate(domain_out%list(starting(1):ending(1)))
+         do i = starting(1), ending(1)
+            call mpp_copy_domain2D_spec(domain_in%list(i),domain_out%list(i))
+         enddo
+     endif
 
      return
 
   end subroutine mpp_copy_domain2D
 
+  !> @brief Copies input 2d domain spec to the output 2d domain spec
+  subroutine mpp_copy_domain2D_spec(domain2D_spec_in, domain2d_spec_out)
+  type(domain2D_spec), intent(in) :: domain2D_spec_in   !< Input
+  type(domain2D_spec), intent(out) :: domain2D_spec_out !< Output
+
+  integer :: starting  !< Starting bounds
+  integer :: ending    !< Ending bounds
+  integer :: i         !< For loop
+
+  domain2D_spec_out%pe = domain2D_spec_in%pe
+  domain2D_spec_out%pos = domain2D_spec_in%pos
+  domain2D_spec_out%tile_root_pe = domain2D_spec_in%tile_root_pe
+
+  if (associated(domain2D_spec_in%tile_id)) then
+      starting = lbound(domain2D_spec_in%tile_id,1)
+      ending = ubound(domain2D_spec_in%tile_id,1)
+
+      allocate(domain2D_spec_out%tile_id(starting:ending))
+      domain2D_spec_out%tile_id = domain2D_spec_in%tile_id
+  endif
+
+  if (associated(domain2D_spec_in%x)) then
+      starting = lbound(domain2D_spec_in%x,1)
+      ending = ubound(domain2D_spec_in%x,1)
+
+      allocate(domain2D_spec_out%x(starting:ending))
+      do i = starting, ending
+         call mpp_copy_domain1D_spec(domain2D_spec_in%x(i), domain2D_spec_out%x(i))
+      enddo
+  endif
+
+  if (associated(domain2D_spec_in%y)) then
+      starting = lbound(domain2D_spec_in%y,1)
+      ending = ubound(domain2D_spec_in%y,1)
+
+      allocate(domain2D_spec_out%y(starting:ending))
+      do i = starting, ending
+         call mpp_copy_domain1D_spec(domain2D_spec_in%y(i), domain2D_spec_out%y(i))
+      enddo
+  endif
+
+  end subroutine mpp_copy_domain2D_spec
+
+  !> @brief Copies input 1d domain spec to the output 1d domain spec
+  subroutine mpp_copy_domain1D_spec(domain1D_spec_in, domain1D_spec_out)
+     type(domain1D_spec), intent(in) :: domain1D_spec_in   !< Input
+     type(domain1D_spec), intent(out) :: domain1D_spec_out !< Output
+
+     domain1D_spec_out%pos = domain1D_spec_in%pos
+
+     call mpp_copy_domain_axis_spec(domain1D_spec_in%compute, domain1D_spec_out%compute)
+     call mpp_copy_domain_axis_spec(domain1D_spec_in%global, domain1D_spec_out%global)
+  end subroutine mpp_copy_domain1D_spec
+
+  !> @brief Copies input domain_axis_spec to the output domain_axis_spec
+  subroutine mpp_copy_domain_axis_spec(domain_axis_spec_in, domain_axis_spec_out)
+     type(domain_axis_spec), intent(in) :: domain_axis_spec_in   !< Input
+     type(domain_axis_spec), intent(out) :: domain_axis_spec_out !< Output
+
+     domain_axis_spec_out%begin = domain_axis_spec_in%begin
+     domain_axis_spec_out%end = domain_axis_spec_in%end
+     domain_axis_spec_out%size = domain_axis_spec_in%size
+     domain_axis_spec_out%max_size = domain_axis_spec_in%max_size
+     domain_axis_spec_out%is_global = domain_axis_spec_in%is_global
+  end subroutine mpp_copy_domain_axis_spec
+
   !######################################################################
   subroutine set_group_update(group, domain)
-     type(mpp_group_update_type), intent(inout) :: group  
+     type(mpp_group_update_type), intent(inout) :: group
      type(domain2D),              intent(inout) :: domain
      integer   :: nscalar, nvector, nlist
      integer   :: nsend, nrecv, nsend_old, nrecv_old
@@ -1669,9 +1901,8 @@ end subroutine mpp_get_tile_compute_domains
      integer   :: ind_s(3*MAXOVERLAP)
      integer   :: ind_x(3*MAXOVERLAP)
      integer   :: ind_y(3*MAXOVERLAP)
-     integer   :: pelist(3*MAXOVERLAP), to_pe_list(3*MAXOVERLAP)
-     integer   :: buffer_pos_recv(3*MAXOVERLAP), buffer_pos_send(3*MAXOVERLAP)
-     integer   :: recv_size(3*MAXOVERLAP), send_size(3*MAXOVERLAP)
+     integer   :: pelist(3*MAXOVERLAP)
+     integer   :: send_size(3*MAXOVERLAP)
      integer   :: position_x, position_y, npack, nunpack, dir
      integer   :: pack_buffer_pos, unpack_buffer_pos
      integer   :: omp_get_num_threads, nthreads
@@ -1801,7 +2032,7 @@ end subroutine mpp_get_tile_compute_domains
         else
            rank_y = -1
         endif
-        nrecv = nrecv + 1   
+        nrecv = nrecv + 1
         rank = maxval((/rank_s, rank_x, rank_y/))
         if(rank == rank_s) then
            n = n + 1
@@ -1869,15 +2100,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: nunpack is greater than MAXOVERLAP, increase MAXOVERLAP 1")
                  group%unpack_type(nunpack) = FIELD_S
                  group%unpack_buffer_pos(nunpack) = unpack_buffer_pos
-                 group%unpack_rotation(nunpack) = overptr%rotation(n) 
+                 group%unpack_rotation(nunpack) = overptr%rotation(n)
                  group%unpack_is(nunpack) = overptr%is(n)
                  group%unpack_ie(nunpack) = overptr%ie(n)
                  group%unpack_js(nunpack) = overptr%js(n)
-                 group%unpack_je(nunpack) = overptr%je(n) 
+                 group%unpack_je(nunpack) = overptr%je(n)
                  group%unpack_size(nunpack) = overptr%msgsize(n)*nscalar
                  unpack_buffer_pos = unpack_buffer_pos + group%unpack_size(nunpack)*ksize
               end if
-           end do   
+           end do
         end if
 
         m = ind_x(l)
@@ -1891,15 +2122,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: nunpack is greater than MAXOVERLAP, increase MAXOVERLAP 2")
                  group%unpack_type(nunpack) = FIELD_X
                  group%unpack_buffer_pos(nunpack) = unpack_buffer_pos
-                 group%unpack_rotation(nunpack) = overptr%rotation(n) 
+                 group%unpack_rotation(nunpack) = overptr%rotation(n)
                  group%unpack_is(nunpack) = overptr%is(n)
                  group%unpack_ie(nunpack) = overptr%ie(n)
                  group%unpack_js(nunpack) = overptr%js(n)
-                 group%unpack_je(nunpack) = overptr%je(n) 
+                 group%unpack_je(nunpack) = overptr%je(n)
                  group%unpack_size(nunpack) = overptr%msgsize(n)*nvector
                  unpack_buffer_pos = unpack_buffer_pos + group%unpack_size(nunpack)*ksize
               end if
-           end do   
+           end do
         end if
 
         m = ind_y(l)
@@ -1913,15 +2144,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: nunpack is greater than MAXOVERLAP, increase MAXOVERLAP 3")
                  group%unpack_type(nunpack) = FIELD_Y
                  group%unpack_buffer_pos(nunpack) = unpack_buffer_pos
-                 group%unpack_rotation(nunpack) = overptr%rotation(n) 
+                 group%unpack_rotation(nunpack) = overptr%rotation(n)
                  group%unpack_is(nunpack) = overptr%is(n)
                  group%unpack_ie(nunpack) = overptr%ie(n)
                  group%unpack_js(nunpack) = overptr%js(n)
-                 group%unpack_je(nunpack) = overptr%je(n) 
+                 group%unpack_je(nunpack) = overptr%je(n)
                  group%unpack_size(nunpack) = overptr%msgsize(n)*nvector
                  unpack_buffer_pos = unpack_buffer_pos + group%unpack_size(nunpack)*ksize
               end if
-           end do   
+           end do
         end if
      end do
      group%nunpack = nunpack
@@ -1958,7 +2189,7 @@ end subroutine mpp_get_tile_compute_domains
         else
            rank_y = nlist+1
         endif
-        nsend = nsend + 1   
+        nsend = nsend + 1
         rank = minval((/rank_s, rank_x, rank_y/))
         if(rank == rank_s) then
            n = n + 1
@@ -2024,15 +2255,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: npack is greater than MAXOVERLAP, increase MAXOVERLAP 1")
                  group%pack_type(npack) = FIELD_S
                  group%pack_buffer_pos(npack) = pack_buffer_pos
-                 group%pack_rotation(npack) = overptr%rotation(n) 
+                 group%pack_rotation(npack) = overptr%rotation(n)
                  group%pack_is(npack) = overptr%is(n)
                  group%pack_ie(npack) = overptr%ie(n)
                  group%pack_js(npack) = overptr%js(n)
-                 group%pack_je(npack) = overptr%je(n) 
+                 group%pack_je(npack) = overptr%je(n)
                  group%pack_size(npack) = overptr%msgsize(n)*nscalar
                  pack_buffer_pos = pack_buffer_pos + group%pack_size(npack)*ksize
               end if
-           end do   
+           end do
         end if
 
         m = ind_x(l)
@@ -2052,15 +2283,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: npack is greater than MAXOVERLAP, increase MAXOVERLAP 2")
                  group%pack_type(npack) = FIELD_X
                  group%pack_buffer_pos(npack) = pack_buffer_pos
-                 group%pack_rotation(npack) = overptr%rotation(n) 
+                 group%pack_rotation(npack) = overptr%rotation(n)
                  group%pack_is(npack) = overptr%is(n)
                  group%pack_ie(npack) = overptr%ie(n)
                  group%pack_js(npack) = overptr%js(n)
-                 group%pack_je(npack) = overptr%je(n) 
+                 group%pack_je(npack) = overptr%je(n)
                  group%pack_size(npack) = overptr%msgsize(n)*nvector
                  pack_buffer_pos = pack_buffer_pos + group%pack_size(npack)*ksize
               end if
-           end do   
+           end do
         end if
 
         m = ind_y(l)
@@ -2079,15 +2310,15 @@ end subroutine mpp_get_tile_compute_domains
                    "set_group_update: npack is greater than MAXOVERLAP, increase MAXOVERLAP 3")
                  group%pack_type(npack) = FIELD_Y
                  group%pack_buffer_pos(npack) = pack_buffer_pos
-                 group%pack_rotation(npack) = overptr%rotation(n) 
+                 group%pack_rotation(npack) = overptr%rotation(n)
                  group%pack_is(npack) = overptr%is(n)
                  group%pack_ie(npack) = overptr%ie(n)
                  group%pack_js(npack) = overptr%js(n)
-                 group%pack_je(npack) = overptr%je(n) 
+                 group%pack_je(npack) = overptr%je(n)
                  group%pack_size(npack) = overptr%msgsize(n)*nvector
                  pack_buffer_pos = pack_buffer_pos + group%pack_size(npack)*ksize
               end if
-           end do   
+           end do
         end if
      end do
      group%npack = npack
@@ -2139,6 +2370,4 @@ end subroutine set_group_update
      mpp_group_update_is_set = (group%nscalar > 0 .OR. group%nvector > 0)
 
   end function mpp_group_update_is_set
-
-
-
+!> @}

@@ -18,6 +18,11 @@
 !* You should have received a copy of the GNU Lesser General Public
 !* License along with FMS.  If not, see <http://www.gnu.org/licenses/>.
 !***********************************************************************
+!> @file
+!> @brief Utility routines for parallelization with MPI
+
+!> @addtogroup mpp_mod
+!> @{
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !                                                                             !
@@ -25,14 +30,17 @@
 !                                                                             !
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+!> A very basic error handler
+!! uses ABORT and FLUSH calls, may need to use cpp to rename
 subroutine mpp_error_basic( errortype, errormsg )
-  !a very basic error handler
-  !uses ABORT and FLUSH calls, may need to use cpp to rename
+#ifdef __INTEL_COMPILER
+  ! Intel module containing tracebackQQ
+   use ifcore
+#endif
   integer,                    intent(in) :: errortype
   character(len=*), intent(in), optional :: errormsg
   character(len=512)                     :: text
-  logical                                :: opened
-  integer                                :: istat, errunit
+  integer                                :: errunit
 
   if( .NOT.module_is_initialized )call ABORT()
 
@@ -55,16 +63,15 @@ subroutine mpp_error_basic( errortype, errormsg )
      if(pe==root_pe)write( out_unit,'(a)' )trim(text)
   case default
      errunit = stderr()
-#ifdef __SX
-     write( errunit, * )trim(text)
-#else
      write( errunit, '(/a/)' )trim(text)
-#endif
      if(pe==root_pe)write( out_unit,'(/a/)' )trim(text)
      if( errortype.EQ.FATAL .OR. warnings_are_fatal )then
-        call FLUSH(out_unit)
-#ifdef sgi_mipspro
-        call TRACE_BACK_STACK_AND_PRINT()
+        FLUSH(out_unit)
+#ifdef __INTEL_COMPILER
+  ! Get traceback and return quietly for correct abort
+        call TRACEBACKQQ(user_exit_code=-1)
+#elif __GFORTRAN__
+        call BACKTRACE
 #endif
         call MPI_ABORT( MPI_COMM_WORLD, 1, error )
      end if
@@ -77,17 +84,16 @@ subroutine mpp_error_basic( errortype, errormsg )
 end subroutine mpp_error_basic
 
 !#####################################################################
-!--- makes a PE set out of a PE list. A PE list is an ordered list of PEs
-!--- a PE set is a triad (start,log2stride,size) for SHMEM, an a communicator for MPI
-!--- if stride is non-uniform or not a power of 2, 
-!--- will return error (not required for MPI but enforced for uniformity)
+!> Makes a PE set out of a PE list. A PE list is an ordered list of PEs
+!! a PE set is a triad (start,log2stride,size) for SHMEM, an a communicator for MPI
+!! if stride is non-uniform or not a power of 2,
+!! will return error (not required for MPI but enforced for uniformity)
 function get_peset(pelist)
   integer                       :: get_peset
   integer, intent(in), optional :: pelist(:)
-  integer                       :: group, errunit
-  integer                       :: i, n, stride, l
+  integer                       :: errunit
+  integer                       :: i, n
   integer,          allocatable :: sorted(:)
-  character(len=128) :: text
 
   if( .NOT.PRESENT(pelist) )then !set it to current_peset_num
      get_peset = current_peset_num; return
@@ -101,7 +107,7 @@ function get_peset(pelist)
   endif
 
   allocate( sorted(size(pelist(:))) )
-  sorted = pelist 
+  sorted = pelist
   errunit = stderr()
   if( debug )write( errunit,* )'pelist=', pelist
 
@@ -127,22 +133,6 @@ function get_peset(pelist)
   call MPI_GROUP_INCL( peset(current_peset_num)%group, size(sorted(:)), sorted-mpp_root_pe(), peset(i)%group, error )
   call MPI_COMM_CREATE_GROUP(peset(current_peset_num)%id, peset(i)%group, &
                              DEFAULT_TAG, peset(i)%id, error )
-#ifdef use_MPI_SMA
-  n = size(sorted(:))
-  write( text, '(20i6)' )( sorted(l), l=1,min(n,20) )
-  if( n.GT.20 )text = trim(text)//' ...'
-  peset(i)%start = sorted(1)
-  if( size(sorted(:)).GT.1 )then
-     stride = sorted(2)-sorted(1)
-     if( ANY(sorted(2:n)-sorted(1:n-1).NE.stride) ) &
-          call mpp_error( FATAL, 'GET_PESET: pelist must have constant stride. PEs='//trim(text) )
-     peset(i)%log2stride = nint( log(real(stride))/log(2.) )
-     if( 2**peset(i)%log2stride.NE.stride ) &
-          call mpp_error( FATAL, 'GET_PESET: pelist must have power-of-2 stride. PEs='//trim(text) )
-  else
-     peset(i)%log2stride = 0
-  end if
-#endif
   deallocate(sorted)
   get_peset = i
 
@@ -151,7 +141,7 @@ function get_peset(pelist)
 end function get_peset
 
 !#######################################################################
- !synchronize PEs in list
+!> Synchronize PEs in list
 subroutine mpp_sync( pelist, do_self )
   integer, intent(in), optional :: pelist(:)
   logical, intent(in), optional :: do_self
@@ -164,15 +154,7 @@ subroutine mpp_sync( pelist, do_self )
   n = get_peset(pelist); if( peset(n)%count.EQ.1 )return
 
   if( debug .and. (current_clock.NE.0) )call SYSTEM_CLOCK(start_tick)
-#ifdef use_MPI_SMA
-  if( n.EQ.world_peset_num )then
-     call SHMEM_BARRIER_ALL() !special call is faster
-  else
-     call SHMEM_BARRIER( peset(n)%start, peset(n)%log2stride, peset(n)%count, pSync )
-  end if
-#else
   call MPI_BARRIER( peset(n)%id, error )
-#endif
 
   if( debug .and. (current_clock.NE.0) )call increment_current_clock(EVENT_WAIT)
 
@@ -180,9 +162,9 @@ subroutine mpp_sync( pelist, do_self )
 end subroutine mpp_sync
 
 !#######################################################################
-  !this is to check if current PE's outstanding puts are complete
-  !but we can't use shmem_fence because we are actually waiting for
-  !a remote PE to complete its get
+!> This is to check if current PE's outstanding puts are complete
+!! but we can't use shmem_fence because we are actually waiting for
+!! a remote PE to complete its get
 subroutine mpp_sync_self( pelist, check, request, msg_size, msg_type)
   integer, intent(in), optional :: pelist(:)
   integer, intent(in), optional :: check
@@ -190,7 +172,7 @@ subroutine mpp_sync_self( pelist, check, request, msg_size, msg_type)
   integer, intent(in   ), optional :: msg_size(:)
   integer, intent(in   ), optional :: msg_type(:)
 
-  integer                       :: i, m, n, stride, my_check, rsize
+  integer                       :: m, my_check, rsize
 
   if( debug .and. (current_clock.NE.0) )call SYSTEM_CLOCK(start_tick)
   my_check = EVENT_SEND
@@ -245,10 +227,11 @@ subroutine mpp_sync_self( pelist, check, request, msg_size, msg_type)
                 call mpp_error(FATAL, "mpp_sync_self: size_recv does not match of data received")
            endif
            size_recv(m) = 0
-        end do    
+        end do
         cur_recv_request = 0
-     end select 
+     end select
   endif
   if( debug .and. (current_clock.NE.0) )call increment_current_clock(EVENT_WAIT)
   return
 end subroutine mpp_sync_self
+!> @}
