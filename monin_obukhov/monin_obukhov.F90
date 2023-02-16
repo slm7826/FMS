@@ -299,10 +299,10 @@ if (ier.ne.0) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
 end subroutine stable_mix_3d
 
 !=======================================================================
-subroutine mo_diff_2d_n(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_2d_n(z, u_star, b_star, zR, k_m, k_h)
 
 real, intent(in),  dimension(:,:,:) :: z
-real, intent(in),  dimension(:,:)   :: u_star, b_star
+real, intent(in),  dimension(:,:)   :: u_star, b_star, zR
 real, intent(out), dimension(:,:,:) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
@@ -314,7 +314,7 @@ if(.not.module_is_initialized) call error_mesg('mo_diff_2d_n in monin_obukhov_mo
 ni = size(z, 1); nj = size(z, 2); nk = size(z, 3)
 call monin_obukhov_diff(most, vonkarm,                           &
           & ustar_min,                                     &
-          & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
+          & ni, nj, nk, z, u_star, b_star, zR, k_m, k_h, ier)
 
 end subroutine mo_diff_2d_n
 
@@ -474,16 +474,16 @@ enddo
 end subroutine mo_profile_2d_n
 
 !=======================================================================
-subroutine mo_diff_2d_1(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_2d_1(z, u_star, b_star, zR, k_m, k_h)
 
-real, intent(in),  dimension(:,:) :: z, u_star, b_star
+real, intent(in),  dimension(:,:) :: z, u_star, b_star, zR
 real, intent(out), dimension(:,:) :: k_m, k_h
 
 real   , dimension(size(z,1),size(z,2),1) :: z_n, k_m_n, k_h_n
 
 z_n(:,:,1) = z
 
-call mo_diff_2d_n(z_n, u_star, b_star, k_m_n, k_h_n)
+call mo_diff_2d_n(z_n, u_star, b_star, zR, k_m_n, k_h_n)
 
 k_m = k_m_n(:,:,1)
 k_h = k_h_n(:,:,1)
@@ -491,19 +491,20 @@ k_h = k_h_n(:,:,1)
 end subroutine mo_diff_2d_1
 
 !=======================================================================
-subroutine mo_diff_1d_1(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_1d_1(z, u_star, b_star, zR, k_m, k_h)
 
-real, intent(in),  dimension(:) :: z, u_star, b_star
+real, intent(in),  dimension(:) :: z, u_star, b_star, zR
 real, intent(out), dimension(:) :: k_m, k_h
 
 real, dimension(size(z),1,1) :: z_n, k_m_n, k_h_n
-real, dimension(size(z),1)   :: u_star_n, b_star_n
+real, dimension(size(z),1)   :: u_star_n, b_star_n, zR_n
 
 z_n   (:,1,1) = z
 u_star_n(:,1) = u_star
 b_star_n(:,1) = b_star
+zR_n(:,1)     = zR
 
-call mo_diff_2d_n(z_n, u_star_n, b_star_n, k_m_n, k_h_n)
+call mo_diff_2d_n(z_n, u_star_n, b_star_n, zR_n, k_m_n, k_h_n)
 
 k_m = k_m_n(:,1,1)
 k_h = k_h_n(:,1,1)
@@ -511,13 +512,13 @@ k_h = k_h_n(:,1,1)
 end subroutine mo_diff_1d_1
 
 !=======================================================================
-subroutine mo_diff_1d_n(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_1d_n(z, u_star, b_star, zR, k_m, k_h)
 
 real, intent(in),  dimension(:,:) :: z
-real, intent(in),  dimension(:)   :: u_star, b_star
+real, intent(in),  dimension(:)   :: u_star, b_star, zR
 real, intent(out), dimension(:,:) :: k_m, k_h
 
-real, dimension(size(z,1),1)            :: u_star2, b_star2
+real, dimension(size(z,1),1)            :: u_star2, b_star2, zR2
 real, dimension(size(z,1),1, size(z,2)) :: z2, k_m2, k_h2
 
 integer :: n
@@ -527,8 +528,9 @@ do n = 1, size(z,2)
 enddo
 u_star2(:,1) = u_star
 b_star2(:,1) = b_star
+zR2    (:,1) = zR
 
-call mo_diff_2d_n(z2, u_star2, b_star2, k_m2, k_h2)
+call mo_diff_2d_n(z2, u_star2, b_star2, zR2, k_m2, k_h2)
 
 do n = 1, size(z,2)
   k_m(:,n) = k_m2(:,1,n)
@@ -538,49 +540,49 @@ enddo
 end subroutine mo_diff_1d_n
 
 !=======================================================================
-subroutine mo_diff_0d_1(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_0d_1(z, u_star, b_star, zR, k_m, k_h)
 
-real, intent(in)  :: z, u_star, b_star
+real, intent(in)  :: z, u_star, b_star, zR
 real, intent(out) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 
 real, dimension(1,1,1) :: z_, k_m_, k_h_
-real, dimension(1,1)   :: u_star_, b_star_
+real, dimension(1,1)   :: u_star_, b_star_, zR_
 
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_1 in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = 1
-z_(1,1,1) = z; u_star_ = u_star; b_star_ = b_star
+z_(1,1,1) = z; u_star_ = u_star; b_star_ = b_star; zR_ = zR
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
+          & ni, nj, nk, z_, u_star_, b_star_, zR_, k_m_, k_h_, ier)
 k_m = k_m_(1,1,1); k_h = k_h_(1,1,1)
 
 end subroutine mo_diff_0d_1
 
 !=======================================================================
-subroutine mo_diff_0d_n(z, u_star, b_star, k_m, k_h)
+subroutine mo_diff_0d_n(z, u_star, b_star, zR, k_m, k_h)
 
 real, intent(in),  dimension(:) :: z
-real, intent(in)                :: u_star, b_star
+real, intent(in)                :: u_star, b_star, zR
 real, intent(out), dimension(:) :: k_m, k_h
 
 integer            :: ni, nj, nk, ier
 real, parameter    :: ustar_min = 1.e-10
 real, dimension(1,1,size(z)) :: z_, k_m_, k_h_
-real, dimension(1,1)         :: u_star_, b_star_
+real, dimension(1,1)         :: u_star_, b_star_, zR_
 
 if(.not.module_is_initialized) call error_mesg('mo_diff_0d_n in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
 ni = 1; nj = 1; nk = size(z(:))
-z_(1,1,:) = z; u_star_ = u_star; b_star_ = b_star
+z_(1,1,:) = z; u_star_ = u_star; b_star_ = b_star; zR_ = zR
 call monin_obukhov_diff(most, vonkarm,                     &
           & ustar_min,                                     &
-          & ni, nj, nk, z_, u_star_, b_star_, k_m_, k_h_, ier)
+          & ni, nj, nk, z_, u_star_, b_star_, zR_, k_m_, k_h_, ier)
 k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
 
 end subroutine mo_diff_0d_n

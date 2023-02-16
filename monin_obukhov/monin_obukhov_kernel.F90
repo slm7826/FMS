@@ -49,18 +49,19 @@ contains
 
 _PURE subroutine monin_obukhov_diff(most, vonkarm,                &
      & ustar_min,                                     &
-     & ni, nj, nk, z, u_star, b_star, k_m, k_h, ier)
+     & ni, nj, nk, z, u_star, b_star, zR, k_m, k_h, ier)
   class(most_functions_T), intent(in) :: most
   real   , intent(in   )                        :: vonkarm
   real   , intent(in   )                        :: ustar_min ! = 1.e-10
   integer, intent(in   )                        :: ni, nj, nk
   real   , intent(in   ), dimension(ni, nj, nk) :: z
   real   , intent(in   ), dimension(ni, nj)     :: u_star, b_star
+  real   , intent(in   ), dimension(ni, nj)     :: zR ! roughness sublayer scale, m
   real   , intent(  out), dimension(ni, nj, nk) :: k_m, k_h
   integer, intent(  out)                        :: ier
 
   real , dimension(ni, nj) :: phi_m, phi_h, zeta, uss
-  integer :: j, k
+  integer :: i, j, k
 
   logical, dimension(ni) :: mask
 
@@ -85,6 +86,19 @@ _PURE subroutine monin_obukhov_diff(most, vonkarm,                &
         k_h(:,:,k) = vonkarm * uss*z(:,:,k)/phi_h
      end do
   endif
+
+  if (.not.associated(most%rsl)) return ! no roughness sublayer correction
+
+  ! correct the diffusivities for roughness sublayer
+  do j = 1, size(z,2)
+     do i = 1, size(z,1)
+        if (zR(i,j).le.0.0) cycle ! no roughness sublayer exists at this point
+        do k = 1, size(z,3)
+           k_m(i,j,k) = k_m(i,j,k)/most%rsl%rsl_m(z(i,j,k)/zR(i,j))
+           k_h(i,j,k) = k_h(i,j,k)/most%rsl%rsl_t(z(i,j,k)/zR(i,j))
+        enddo
+     enddo
+  enddo
 
 end subroutine monin_obukhov_diff
 
