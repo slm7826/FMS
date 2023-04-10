@@ -38,7 +38,7 @@ use mpp_mod,       only: input_nml_file
 use fms_mod,       only: error_mesg, FATAL, NOTE, file_exist,   &
                          check_nml_error, open_namelist_file,      &
                          mpp_pe, mpp_root_pe, close_file, stdlog, &
-                         write_version_number, lowercase
+                         write_version_number, lowercase, string
 use monin_obukhov_functions_mod, only: most_functions_T, &
                          make_most1_functions, make_most2_functions, &
                          make_brutsaert_functions, make_neutral_functions
@@ -74,12 +74,6 @@ interface mo_diff
                       mo_diff_1d_n, mo_diff_1d_1, &
                       mo_diff_2d_n, mo_diff_2d_1
 end interface
-
-interface stable_mix
-    module procedure  stable_mix_0d, stable_mix_1d, &
-                      stable_mix_2d, stable_mix_3d
-end interface
-
 
 !--------------------- version number ---------------------------------
 ! Include variable "version" to be written to log file.
@@ -280,23 +274,58 @@ subroutine mo_profile_1d(zref, zref_t, z, z0, zt, zq, zR, u_star, b_star, q_star
 end subroutine mo_profile_1d
 
 !=======================================================================
-subroutine stable_mix_3d(rich, mix)
+subroutine stable_mix(rich, z_ag, rsl_scale, mix)
 
-real, intent(in) , dimension(:,:,:)  :: rich
-real, intent(out), dimension(:,:,:)  :: mix
+real, intent(in) , dimension(:,:,:)  :: rich      ! Richardson number
+real, intent(in) , dimension(:,:,:)  :: z_ag      ! height above ground, m
+real, intent(in) , dimension(:,:)    :: rsl_scale ! roughness sublayer scale, m
+real, intent(out), dimension(:,:,:)  :: mix       !
 
-integer :: n, ier
+integer :: i,j,k,n
+integer :: ier ! error code returned by most%stable_mix
+real, dimension(size(rich,1),size(rich,2),size(rich,3)) :: &
+    pm2, & ! RSL correction for momentum squared
+    Ri     ! Richardson number scaled with RSL corrections
+real :: pt ! RSL correction for heat
 
 if(.not.module_is_initialized) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
      'monin_obukhov_init has not been called', FATAL)
 
+if(size(rich,3).ne.size(z_ag,3)) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
+     'vertical sizes of "rich" ('//string(size(rich,3))//') and "z_ag" (' &
+     //string(size(z_ag,3))//') are inconsistent', FATAL)
+
 n = size(rich,1)*size(rich,2)*size(rich,3)
-call most%stable_mix(n, rich, mix, ier)
+
+if(associated(most%rsl)) then
+  ! scale Richardson number with roughness sublayer corrections, where necessary
+  do j = 1,size(rich,2)
+  do i = 1,size(rich,1)
+    if (rsl_scale(i,j)>0.0) then
+      do k = 1,size(rich,3)
+        pm2(i,j,k) = most%rsl%rsl_m(z_ag(i,j,k)/rsl_scale(i,j))**2
+        pt         = most%rsl%rsl_t(z_ag(i,j,k)/rsl_scale(i,j))
+        Ri (i,j,k) = rich(i,j,k) * pm2(i,j,k)/pt
+      enddo
+    else
+      pm2(i,j,:) = 1.0
+      Ri (i,j,:) = rich(i,j,:)
+    endif
+  enddo
+  enddo
+
+  call most%stable_mix(n, Ri, mix, ier)
+
+  ! scale mixing factor with roughness sublayer correction
+  mix(:,:,:) = mix(:,:,:)/pm2(:,:,:)
+else
+  call most%stable_mix(n, rich, mix, ier)
+endif
 
 if (ier.ne.0) call error_mesg('stable_mix_3d in monin_obukhov_mod', &
      'stable_mix calculations for stable_option "'//trim(stable_option)//'" returned an error', FATAL)
 
-end subroutine stable_mix_3d
+end subroutine stable_mix
 
 !=======================================================================
 subroutine mo_diff_2d_n(z, u_star, b_star, zR, k_m, k_h)
@@ -586,52 +615,6 @@ call monin_obukhov_diff(most, vonkarm,                     &
 k_m(:) = k_m_(1,1,:); k_h(:) = k_h_(1,1,:)
 
 end subroutine mo_diff_0d_n
-
-!=======================================================================
-subroutine stable_mix_2d(rich, mix)
-
-real, intent(in) , dimension(:,:)  :: rich
-real, intent(out), dimension(:,:)  :: mix
-
-real, dimension(size(rich,1),size(rich,2),1) :: rich_3d, mix_3d
-
-rich_3d(:,:,1) = rich
-
-call stable_mix_3d(rich_3d, mix_3d)
-
-mix = mix_3d(:,:,1)
-
-end subroutine stable_mix_2d
-
-!=======================================================================
-subroutine stable_mix_1d(rich, mix)
-
-real, intent(in) , dimension(:)  :: rich
-real, intent(out), dimension(:)  :: mix
-
-real, dimension(size(rich),1,1) :: rich_3d, mix_3d
-
-rich_3d(:,1,1) = rich
-
-call stable_mix_3d(rich_3d, mix_3d)
-
-mix = mix_3d(:,1,1)
-
-end subroutine stable_mix_1d
-
-!=======================================================================
-subroutine stable_mix_0d(rich, mix)
-
-real, intent(in) :: rich
-real, intent(out) :: mix
-
-real, dimension(1,1,1) :: rich_3d, mix_3d
-
-rich_3d(1,1,1) = rich
-call stable_mix_3d(rich_3d, mix_3d)
-mix = mix_3d(1,1,1)
-
-end subroutine stable_mix_0d
 
 end module monin_obukhov_mod
 
